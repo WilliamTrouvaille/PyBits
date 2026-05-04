@@ -25,7 +25,10 @@ def load_probe_json(path: str) -> tuple[dict[str, Any] | None, str | None]:
         return None, f"无法解析 hello.py 输出为 JSON：{e}"
 
     if not isinstance(data, dict):
-        return None, f"hello.py 输出的 JSON 根对象不是 object，而是 {type(data).__name__}"
+        return (
+            None,
+            f"hello.py 输出的 JSON 根对象不是 object，而是 {type(data).__name__}",
+        )
 
     return data, None
 
@@ -153,10 +156,14 @@ def render_provider(provider: dict[str, Any]) -> str:
         parts.append(f"requires_openai_auth={fmt_value(requires_openai_auth)}")
 
     if isinstance(http_header_keys, list) and http_header_keys:
-        parts.append("http_headers=[" + ", ".join(str(x) for x in http_header_keys) + "]")
+        parts.append(
+            "http_headers=[" + ", ".join(str(x) for x in http_header_keys) + "]"
+        )
 
     if isinstance(env_http_header_keys, list) and env_http_header_keys:
-        parts.append("env_http_headers=[" + ", ".join(str(x) for x in env_http_header_keys) + "]")
+        parts.append(
+            "env_http_headers=[" + ", ".join(str(x) for x in env_http_header_keys) + "]"
+        )
 
     return "；".join(parts) if parts else "未读取到 provider 细节"
 
@@ -273,9 +280,7 @@ def render_service(service: dict[str, Any], compact: bool) -> tuple[list[str], b
         return render_codex_success(service, compact), True
 
     name = service_display_name(key)
-    return [
-        f"{name}：连通成功；耗时：{duration_ms(service)} ms"
-    ], True
+    return [f"{name}：连通成功；耗时：{duration_ms(service)} ms"], True
 
 
 def build_report(probe: dict[str, Any], compact: bool) -> tuple[str, bool]:
@@ -304,14 +309,23 @@ def build_report(probe: dict[str, Any], compact: bool) -> tuple[str, bool]:
         return prefix + "\n" + "\n".join(lines), overall_ok
 
     header = "总体连通性：全部成功" if overall_ok else "总体连通性：存在失败"
-    body = "\n".join(lines) if lines else "没有读取到任何 service 结果。请运行 HELLO --raw 查看完整输出。"
+    body = (
+        "\n".join(lines)
+        if lines
+        else "没有读取到任何 service 结果。请运行 HELLO --raw 查看完整输出。"
+    )
 
     return header + "\n\n" + body, overall_ok
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", "-i", default="-", help="hello.py 输出的 JSON 文件路径；默认从 stdin 读取")
+    parser.add_argument(
+        "--input",
+        "-i",
+        default="-",
+        help="hello.py 输出的 JSON 文件路径；默认从 stdin 读取",
+    )
     parser.add_argument("--compact", action="store_true", help="输出更短的人类可读结果")
     args = parser.parse_args()
 

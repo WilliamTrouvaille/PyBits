@@ -21,6 +21,7 @@ parts/
 .DS_Store
 *.ps1
 *.bat
+CLI/**
 
 # Environment variables
 .env
@@ -30,6 +31,7 @@ parts/
 # Logs
 *.log
 SKILLS/logs
+HELLO/logs/
 
 # Testing
 .pytest_cache/

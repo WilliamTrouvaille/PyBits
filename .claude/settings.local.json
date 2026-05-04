@@ -5,7 +5,9 @@
       "Bash(where claude *)",
       "Bash(npm list *)",
       "Read(//c/Users/Admin/.local/bin/**)",
-      "Bash(uv sync *)"
+      "Bash(uv sync *)",
+      "Bash(mkdir -p \"d:\\\\CODE\\\\Python\\\\PyBits\\\\.claude\\\\_trash_bin_\")",
+      "Bash(mv 'd:\\\\CODE\\\\Python\\\\PyBits\\\\HELLO\\\\HELLO.ps1' 'd:\\\\CODE\\\\Python\\\\PyBits\\\\.claude\\\\_trash_bin_\\\\HELLO.ps1.__TRACKED_VAR__')"
     ]
   }
 }
