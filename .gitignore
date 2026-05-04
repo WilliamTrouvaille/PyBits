@@ -20,6 +20,7 @@ parts/
 *~
 .DS_Store
 *.ps1
+*.bat
 
 # Environment variables
 .env
@@ -45,6 +46,10 @@ htmlcov/
 .claude/logs/
 .claude/plans/
 .claude/_trash_bin_/
+.claude/skills
 .codex/logs/
 .codex/plans/
 .codex/_trash_bin_/
+.agent/skills
+
+SKILLS/_repos_cache
