@@ -29,6 +29,7 @@ parts/
 
 # Logs
 *.log
+SKILLS/logs
 
 # Testing
 .pytest_cache/
