@@ -18,3 +18,27 @@ CODEX_PROJECT_SKILLS_DIR: Path = Path(".codex") / "skills"
 # 日志配置
 LOG_RETENTION_DAYS: int = 30
 LOG_LEVEL: str = os.getenv("SKILLS_LOG_LEVEL", "INFO")
+
+# 扫描配置
+DEFAULT_SCAN_DEPTH: int = 3
+EXCLUDED_DIRS: set[str] = {
+    ".git",
+    ".github",
+    ".gitlab",
+    "docs",
+    "doc",
+    "documentation",
+    "tests",
+    "test",
+    "__tests__",
+    "examples",
+    "example",
+    "demos",
+    "demo",
+    ".vscode",
+    ".idea",
+    ".vs",
+    "scripts",
+    "tools",
+    "utils",
+}

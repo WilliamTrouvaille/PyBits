@@ -1,41 +1,72 @@
 """仓库管理"""
 
+import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from git import Repo
 from loguru import logger
 
-from .config import REPOS_CACHE_DIR
+from .config import DEFAULT_SCAN_DEPTH, REPOS_CACHE_DIR
 from .models import Repository, RepositoryType, Skill
 from .skill import validate_skill
-from .utils import configure_git_proxy, ensure_dir
+from .utils import (
+    configure_git_proxy,
+    ensure_dir,
+    extract_skills_to_flat_structure,
+    generate_timestamped_cache_dir_name,
+    recursive_find_skills,
+)
 
 
 def register_github_repo(url: str, proxy: str | None = None) -> Repository:
     """
-    注册 GitHub 仓库
+    注册 GitHub 仓库（新策略）
     1. 解析 URL（支持完整链接和简写）
-    2. 克隆到 _repos_cache/
-    3. 返回 Repository 对象
+    2. 克隆到临时目录
+    3. 递归扫描提取 skills 到带时间戳的缓存目录
+    4. 删除临时目录（包括 .git）
+    5. 返回 Repository 对象
     """
     owner, repo = parse_github_url(url)
     repo_name = f"{owner}/{repo}"
     full_url = f"https://github.com/{owner}/{repo}.git"
 
-    # 确定本地缓存路径
-    cache_dir_name = f"{owner}-{repo}"
-    local_path = REPOS_CACHE_DIR / cache_dir_name
+    # 生成带时间戳的缓存目录名
+    cache_dir_name = generate_timestamped_cache_dir_name(owner, repo)
+    final_cache_path = REPOS_CACHE_DIR / cache_dir_name
 
-    # 克隆仓库
-    clone_github_repo(full_url, local_path, proxy)
+    # 克隆到临时目录
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        clone_github_repo(full_url, temp_path, proxy)
+
+        # 提取 skills 到缓存目录
+        extracted_skills, conflicts = extract_skills_to_flat_structure(
+            temp_path, final_cache_path
+        )
+
+        if conflicts:
+            # 清理已创建的缓存目录
+            if final_cache_path.exists():
+                shutil.rmtree(final_cache_path)
+
+            conflict_details = "\n".join(
+                f"  - '{name}': {', '.join(str(p) for p in paths)}"
+                for name, paths in conflicts.items()
+            )
+            raise ValueError(f"仓库中存在重名 skills，无法注册:\n{conflict_details}")
+
+        if not extracted_skills:
+            logger.warning(f"仓库 {repo_name} 中未发现任何合法 skill")
 
     return Repository(
         name=repo_name,
         type=RepositoryType.GITHUB,
         url=full_url,
         path=None,
-        local_path=local_path,
+        local_path=final_cache_path,
         registered_at=datetime.now(),
     )
 
@@ -88,10 +119,12 @@ def clone_github_repo(url: str, target_dir: Path, proxy: str | None = None) -> N
         raise
 
 
-def scan_repository(repo: Repository) -> list[Skill]:
+def scan_repository(
+    repo: Repository, max_depth: int = DEFAULT_SCAN_DEPTH
+) -> list[Skill]:
     """
-    扫描仓库中的所有合法 skills
-    - 遍历仓库目录
+    扫描仓库中的所有合法 skills（递归扫描）
+    - 递归遍历仓库目录
     - 调用 skill.validate_skill() 校验
     - 返回 Skill 列表
     """
@@ -105,17 +138,13 @@ def scan_repository(repo: Repository) -> list[Skill]:
         logger.warning(f"仓库路径不存在: {scan_path}")
         return []
 
+    # 递归查找所有包含 SKILL.md 的目录
+    skill_dirs = recursive_find_skills(scan_path, max_depth)
+
     skills = []
-    for item in scan_path.iterdir():
-        if not item.is_dir():
-            continue
-
-        # 跳过隐藏目录和特殊目录
-        if item.name.startswith(".") or item.name.startswith("_"):
-            continue
-
-        if validate_skill(item):
-            skill = Skill.from_directory(item, repo.name)
+    for skill_dir in skill_dirs:
+        if validate_skill(skill_dir):
+            skill = Skill.from_directory(skill_dir, repo.name)
             if skill:
                 skills.append(skill)
                 logger.debug(f"发现 skill: {skill.name}")

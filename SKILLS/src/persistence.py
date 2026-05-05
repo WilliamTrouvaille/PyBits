@@ -59,6 +59,29 @@ def add_repository(repo: Repository) -> None:
     logger.info(f"添加仓库: {repo.name}")
 
 
+def update_repository(repo: Repository) -> None:
+    """
+    更新已存在的仓库记录
+    - 如果仓库不存在，抛出异常
+    - 如果存在，替换为新的记录
+    """
+    repos = load_repositories()
+
+    # 查找并替换
+    found = False
+    for i, r in enumerate(repos):
+        if r.name == repo.name:
+            repos[i] = repo
+            found = True
+            break
+
+    if not found:
+        raise ValueError(f"仓库 '{repo.name}' 不存在，无法更新")
+
+    save_repositories(repos)
+    logger.info(f"更新仓库: {repo.name}")
+
+
 def remove_repository(name: str) -> bool:
     """移除指定仓库"""
     repos = load_repositories()
