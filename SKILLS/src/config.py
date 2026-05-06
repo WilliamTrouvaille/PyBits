@@ -8,6 +8,7 @@ PROJECT_ROOT: Path = Path(__file__).parent.parent.resolve()
 REPOS_CACHE_DIR: Path = PROJECT_ROOT / "_repos_cache"
 LOGS_DIR: Path = PROJECT_ROOT / "logs"
 REPOS_JSON_PATH: Path = PROJECT_ROOT / ".repos.json"
+REPOS_LOCAL_JSON_PATH: Path = PROJECT_ROOT / ".repos.local.json"
 
 # Agent skills 目录
 CLAUDE_USER_SKILLS_DIR: Path = Path.home() / ".claude" / "skills"

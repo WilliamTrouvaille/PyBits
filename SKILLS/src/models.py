@@ -47,13 +47,16 @@ class Repository:
     registered_at: datetime
 
     def to_dict(self) -> dict:
-        """转换为字典"""
+        """
+        转换为字典（用于 .repos.json）
+        path 和 local_path 始终为 None，实际路径存储在 .repos.local.json
+        """
         return {
             "name": self.name,
             "type": self.type.value,
             "url": self.url,
-            "path": str(self.path) if self.path else None,
-            "local_path": str(self.local_path) if self.local_path else None,
+            "path": None,
+            "local_path": None,
             "registered_at": self.registered_at.isoformat(),
         }
 

@@ -1,58 +1,10 @@
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-develop-eggs/
-dist/
-eggs/
-.eggs/
-parts/
-
-# Virtual environments
-.venv/
-
-# IDE and editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-*.ps1
-*.bat
-CLI/**
-
-# Environment variables
-.env
-.env.local
-.env.*.local
+**/__pycache__/
+uv.lock
 
 # Logs
-*.log
-SKILLS/logs
+SKILLS/logs/
 HELLO/logs/
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Type checking
-.mypy_cache/
-.pytype/
-.pyre/
-.ruff_cache
-
-# Agent work directories (exclude settings.json from ignoring)
-.claude/logs/
-.claude/plans/
-.claude/_trash_bin_/
-.claude/skills
-.codex/logs/
-.codex/plans/
-.codex/_trash_bin_/
-.agent/skills
-
 SKILLS/_repos_cache
+CLI/
