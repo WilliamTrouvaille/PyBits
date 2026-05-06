@@ -72,6 +72,7 @@ Claude 不应擅自扩展为：
 
 ## 执行
 
+- 使用SKILL /python-engineering （.claude\skills\python-engineering）编写Python代码。
 - 只做用户请求的内容；
 - 优先最小改动；
 - 优先复用现有结构；
