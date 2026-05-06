@@ -84,7 +84,7 @@ def register_local_repo(path: Path, name: str | None = None) -> Repository:
     if not path.is_dir():
         raise NotADirectoryError(f"路径不是目录: {path}")
 
-    repo_name = name if name else path.name
+    repo_name = (name or "").strip() or path.name
 
     return Repository(
         name=repo_name,
