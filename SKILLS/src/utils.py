@@ -21,7 +21,7 @@ def setup_logger() -> None:
     """初始化 loguru 日志"""
     logger.remove()
 
-    # 控制台输出：WARNING 及以上
+    # 控制台输出: WARNING 及以上
     logger.add(
         sys.stderr,
         level="WARNING",
@@ -31,7 +31,7 @@ def setup_logger() -> None:
     # 确保日志目录存在
     ensure_dir(LOGS_DIR)
 
-    # 文件输出：INFO 及以上，按日期分割
+    # 文件输出: INFO 及以上, 按日期分割
     log_file = LOGS_DIR / "skills_{time:YYYY-MM-DD}.log"
     logger.add(
         log_file,
@@ -72,7 +72,7 @@ def normalize_repo_name(url_or_path: str) -> str:
 
 
 def ensure_dir(path: Path) -> None:
-    """确保目录存在，不存在则创建"""
+    """确保目录存在, 不存在则创建"""
     path.mkdir(parents=True, exist_ok=True)
 
 
@@ -134,10 +134,23 @@ def recursive_find_skills(
         excluded_dirs = EXCLUDED_DIRS
 
     skill_dirs = []
+    visited_real_paths: set[Path] = set()
+
+    def _real_path(path: Path) -> Path:
+        """Return a stable directory identity for duplicate and symlink checks."""
+        try:
+            return path.resolve()
+        except OSError:
+            return path
 
     def _scan(path: Path, current_depth: int) -> None:
         if current_depth > max_depth:
             return
+
+        real_path = _real_path(path)
+        if real_path in visited_real_paths:
+            return
+        visited_real_paths.add(real_path)
 
         # 检查当前目录是否包含 SKILL.md
         if (path / "SKILL.md").exists():
@@ -147,8 +160,13 @@ def recursive_find_skills(
 
         # 递归扫描子目录
         try:
-            for item in path.iterdir():
-                if not item.is_dir():
+            children = sorted(
+                (item for item in path.iterdir() if item.is_dir()),
+                key=lambda item: (item.is_symlink(), item.name.lower()),
+            )
+
+            for item in children:
+                if item.is_symlink():
                     continue
 
                 # 跳过隐藏目录、特殊目录和排除目录
@@ -225,7 +243,7 @@ def extract_skills_to_flat_structure(
         sanitized_name = sanitize_skill_name(skill_name)
         if sanitized_name != skill_name:
             logger.warning(
-                f"Skill 名称包含非法字符，已清理: '{skill_name}' -> '{sanitized_name}'"
+                f"Skill 名称包含非法字符, 已清理: '{skill_name}' -> '{sanitized_name}'"
             )
 
         # 复制到目标目录
@@ -237,7 +255,7 @@ def extract_skills_to_flat_structure(
         extracted_skills.append(target_skill_dir)
         logger.debug(f"提取 skill: {skill_dir} -> {target_skill_dir}")
 
-    # 复制 README.md（如果存在）
+    # 复制 README.md (如果存在)
     readme_path = source_repo_path / "README.md"
     if readme_path.exists():
         shutil.copy2(readme_path, target_cache_dir / "README.md")
