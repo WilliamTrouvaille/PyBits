@@ -8,5 +8,7 @@ HELLO/logs/
 
 SKILLS/_repos_cache
 CLI/
+build/
 
 ATP/.paper
+*.egg-info/

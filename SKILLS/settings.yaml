@@ -1,0 +1,34 @@
+# SKILLS 配置文件
+
+# 日志配置
+log_level: "INFO"
+log_retention_days: 30
+
+# 扫描配置
+default_scan_depth: 3
+
+# 扫描时排除的目录
+excluded_dirs:
+  - ".git"
+  - ".github"
+  - ".gitlab"
+  - "docs"
+  - "doc"
+  - "documentation"
+  - "tests"
+  - "test"
+  - "__tests__"
+  - "examples"
+  - "example"
+  - "demos"
+  - "demo"
+  - ".vscode"
+  - ".idea"
+  - ".vs"
+  - "scripts"
+  - "tools"
+  - "utils"
+
+# 路径配置（设为 null 使用默认值）
+repos_cache_dir: null  # 默认: SKILLS/_repos_cache
+logs_dir: null         # 默认: SKILLS/logs

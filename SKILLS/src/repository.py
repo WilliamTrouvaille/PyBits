@@ -8,7 +8,6 @@ from pathlib import Path
 from git import Repo
 from loguru import logger
 
-from .config import DEFAULT_SCAN_DEPTH, REPOS_CACHE_DIR
 from .models import Repository, RepositoryType, Skill
 from .skill import validate_skill
 from .utils import (
@@ -20,7 +19,9 @@ from .utils import (
 )
 
 
-def register_github_repo(url: str, proxy: str | None = None) -> Repository:
+def register_github_repo(
+    url: str, proxy: str | None = None, repos_cache_dir: Path | None = None
+) -> Repository:
     """
     注册 GitHub 仓库（新策略）
     1. 解析 URL（支持完整链接和简写）
@@ -28,14 +29,20 @@ def register_github_repo(url: str, proxy: str | None = None) -> Repository:
     3. 递归扫描提取 skills 到带时间戳的缓存目录
     4. 删除临时目录（包括 .git）
     5. 返回 Repository 对象
+
+    Args:
+        url: GitHub URL 或 owner/repo 简写
+        proxy: 可选的 HTTP(S) 代理
+        repos_cache_dir: 缓存目录路径
     """
     owner, repo = parse_github_url(url)
     repo_name = f"{owner}/{repo}"
     full_url = f"https://github.com/{owner}/{repo}.git"
 
     # 生成带时间戳的缓存目录名
+    cache_dir = repos_cache_dir or Path(__file__).parent.parent / "_repos_cache"
     cache_dir_name = generate_timestamped_cache_dir_name(owner, repo)
-    final_cache_path = REPOS_CACHE_DIR / cache_dir_name
+    final_cache_path = cache_dir / cache_dir_name
 
     # 克隆到临时目录
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -96,14 +103,23 @@ def register_local_repo(path: Path, name: str | None = None) -> Repository:
     )
 
 
-def clone_github_repo(url: str, target_dir: Path, proxy: str | None = None) -> None:
+def clone_github_repo(
+    url: str, target_dir: Path, proxy: str | None = None, repos_cache_dir: Path | None = None
+) -> None:
     """
     克隆 GitHub 仓库
     - 使用 gitpython
     - 支持代理配置
     - 错误处理：网络错误、权限错误
+
+    Args:
+        url: GitHub 仓库 URL
+        target_dir: 目标目录
+        proxy: 可选的 HTTP(S) 代理
+        repos_cache_dir: 缓存目录路径
     """
-    ensure_dir(REPOS_CACHE_DIR)
+    cache_dir = repos_cache_dir or Path(__file__).parent.parent / "_repos_cache"
+    ensure_dir(cache_dir)
 
     env = {}
     if proxy:
@@ -120,13 +136,18 @@ def clone_github_repo(url: str, target_dir: Path, proxy: str | None = None) -> N
 
 
 def scan_repository(
-    repo: Repository, max_depth: int = DEFAULT_SCAN_DEPTH
+    repo: Repository, max_depth: int = 3, excluded_dirs: set[str] | None = None
 ) -> list[Skill]:
     """
     扫描仓库中的所有合法 skills（递归扫描）
     - 递归遍历仓库目录
     - 调用 skill.validate_skill() 校验
     - 返回 Skill 列表
+
+    Args:
+        repo: 仓库对象
+        max_depth: 最大扫描深度
+        excluded_dirs: 排除的目录集合
     """
     # 确定扫描路径
     if repo.type == RepositoryType.GITHUB:
@@ -139,7 +160,8 @@ def scan_repository(
         return []
 
     # 递归查找所有包含 SKILL.md 的目录
-    skill_dirs = recursive_find_skills(scan_path, max_depth)
+    excluded = excluded_dirs or set()
+    skill_dirs = recursive_find_skills(scan_path, max_depth, excluded)
 
     skills = []
     for skill_dir in skill_dirs:

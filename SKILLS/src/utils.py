@@ -1,5 +1,7 @@
 """工具函数"""
 
+from __future__ import annotations
+
 import re
 import shutil
 import sys
@@ -8,17 +10,18 @@ from pathlib import Path
 
 from loguru import logger
 
-from .config import (
-    DEFAULT_SCAN_DEPTH,
-    EXCLUDED_DIRS,
-    LOG_LEVEL,
-    LOG_RETENTION_DAYS,
-    LOGS_DIR,
-)
 
+def setup_logger(
+    logs_dir: Path | None = None, log_retention_days: int = 30, log_level: str = "INFO"
+) -> None:
+    """
+    初始化 loguru 日志
 
-def setup_logger() -> None:
-    """初始化 loguru 日志"""
+    Args:
+        logs_dir: 日志目录路径
+        log_retention_days: 日志保留天数
+        log_level: 日志级别
+    """
     logger.remove()
 
     # 控制台输出: WARNING 及以上
@@ -29,21 +32,22 @@ def setup_logger() -> None:
     )
 
     # 确保日志目录存在
-    ensure_dir(LOGS_DIR)
+    logs_path = logs_dir or Path(__file__).parent.parent / "logs"
+    ensure_dir(logs_path)
 
     # 文件输出: INFO 及以上, 按日期分割
-    log_file = LOGS_DIR / "skills_{time:YYYY-MM-DD}.log"
+    log_file = logs_path / "skills_{time:YYYY-MM-DD}.log"
     logger.add(
         log_file,
-        level=LOG_LEVEL,
+        level=log_level,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
         rotation="00:00",
-        retention=f"{LOG_RETENTION_DAYS} days",
+        retention=f"{log_retention_days} days",
         encoding="utf-8",
     )
 
     # 清理旧日志
-    clean_old_logs(LOGS_DIR, LOG_RETENTION_DAYS)
+    clean_old_logs(logs_path, log_retention_days)
 
 
 def configure_git_proxy(proxy: str) -> dict[str, str]:
@@ -116,7 +120,7 @@ def sanitize_skill_name(name: str) -> str:
 
 def recursive_find_skills(
     root_path: Path,
-    max_depth: int = DEFAULT_SCAN_DEPTH,
+    max_depth: int = 3,
     excluded_dirs: set[str] | None = None,
 ) -> list[Path]:
     """
@@ -131,7 +135,27 @@ def recursive_find_skills(
         包含 SKILL.md 的目录路径列表
     """
     if excluded_dirs is None:
-        excluded_dirs = EXCLUDED_DIRS
+        excluded_dirs = {
+            ".git",
+            ".github",
+            ".gitlab",
+            "docs",
+            "doc",
+            "documentation",
+            "tests",
+            "test",
+            "__tests__",
+            "examples",
+            "example",
+            "demos",
+            "demo",
+            ".vscode",
+            ".idea",
+            ".vs",
+            "scripts",
+            "tools",
+            "utils",
+        }
 
     skill_dirs = []
     visited_real_paths: set[Path] = set()
@@ -193,7 +217,8 @@ def recursive_find_skills(
 def extract_skills_to_flat_structure(
     source_repo_path: Path,
     target_cache_dir: Path,
-    max_depth: int = DEFAULT_SCAN_DEPTH,
+    max_depth: int = 3,
+    excluded_dirs: set[str] | None = None,
 ) -> tuple[list[Path], dict[str, list[Path]]]:
     """
     从源仓库提取 skills 到平铺的缓存目录
@@ -202,6 +227,7 @@ def extract_skills_to_flat_structure(
         source_repo_path: 源仓库路径
         target_cache_dir: 目标缓存目录
         max_depth: 扫描深度
+        excluded_dirs: 排除的目录名集合
 
     Returns:
         (成功提取的 skill 路径列表, 名称冲突字典)
@@ -209,7 +235,7 @@ def extract_skills_to_flat_structure(
     from .skill import parse_skill_metadata
 
     # 递归查找所有 skill 目录
-    skill_dirs = recursive_find_skills(source_repo_path, max_depth)
+    skill_dirs = recursive_find_skills(source_repo_path, max_depth, excluded_dirs)
 
     # 检测名称冲突
     skill_names: dict[str, list[Path]] = {}
@@ -269,3 +295,28 @@ def extract_skills_to_flat_structure(
         logger.debug("复制 README.md 到缓存目录")
 
     return extracted_skills, {}
+
+
+def find_project_root(start_dir: Path) -> Path | None:
+    """
+    查找项目根目录
+
+    Args:
+        start_dir: 起始目录
+
+    Returns:
+        项目根目录路径，如果未找到则返回 None
+    """
+    indicators = [
+        ".git",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "pyproject.toml",
+        ".codex",
+    ]
+
+    for directory in [start_dir] + list(start_dir.parents):
+        if any((directory / indicator).exists() for indicator in indicators):
+            return directory
+
+    return None
