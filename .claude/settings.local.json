@@ -4,7 +4,8 @@
       "mcp__*",
       "Bash(where *)",
       "Bash(npm list *)",
-      "Bash(uv sync *)"
+      "Bash(uv sync *)",
+      "Bash(chmod +x /Users/trouva/CODE/PYTHON/PyBits/CLI/PTM)"
     ]
   }
 }
