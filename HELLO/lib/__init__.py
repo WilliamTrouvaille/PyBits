@@ -10,7 +10,16 @@ from .constants import (
 )
 from .logger import setup_logger
 from .process import get_version, run_process
+from .probe_builder import (
+    assemble_service_result,
+    build_claude_command,
+    build_codex_command,
+    build_process_result,
+    expand_services,
+)
+from .report import build_report
 from .response_normalizer import normalize_claude_response, normalize_codex_response
+from .schema import AuthSummary, ProbeEnvelope, ProcessResult, ServiceResult
 from .security import redact
 from .spinner import Spinner, with_spinner
 from .utils import (
@@ -42,9 +51,22 @@ __all__ = [
     # process
     "get_version",
     "run_process",
+    # probe_builder
+    "assemble_service_result",
+    "build_claude_command",
+    "build_codex_command",
+    "build_process_result",
+    "expand_services",
+    # report
+    "build_report",
     # response_normalizer
     "normalize_claude_response",
     "normalize_codex_response",
+    # schema
+    "AuthSummary",
+    "ProbeEnvelope",
+    "ProcessResult",
+    "ServiceResult",
     # security
     "redact",
     # spinner

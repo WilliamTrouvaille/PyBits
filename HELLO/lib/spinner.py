@@ -1,8 +1,8 @@
 """用户反馈 - 旋转图标"""
 
 import sys
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from loguru import logger
 from rich.console import Console
@@ -51,6 +51,15 @@ class Spinner:
         if final_message:
             self.console.print(final_message, style="green")
 
+    def succeed(self, final_message: str) -> None:
+        """
+        标记 spinner 成功结束
+
+        Args:
+            final_message: 成功后显示的最终消息
+        """
+        self.stop(final_message)
+
     def update(self, message: str) -> None:
         """
         更新 spinner 消息
@@ -70,7 +79,7 @@ class Spinner:
 @contextmanager
 def with_spinner(
     message: str, final_message: str | None = None
-) -> Generator[Spinner, None, None]:
+) -> Generator[Spinner]:
     """
     Spinner 上下文管理器
 

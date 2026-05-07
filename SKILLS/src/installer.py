@@ -1,5 +1,7 @@
 """安装逻辑"""
 
+from __future__ import annotations
+
 import os
 import platform
 import shutil
@@ -9,14 +11,8 @@ from pathlib import Path
 import questionary
 from loguru import logger
 
-from .config import (
-    CLAUDE_PROJECT_SKILLS_DIR,
-    CLAUDE_USER_SKILLS_DIR,
-    CODEX_PROJECT_SKILLS_DIR,
-    CODEX_USER_SKILLS_DIR,
-)
 from .models import AgentType, InstallMode, ScopeType, Skill
-from .utils import ensure_dir
+from .utils import ensure_dir, find_project_root
 
 
 def install_skill(
@@ -25,12 +21,21 @@ def install_skill(
     scope: ScopeType,
     mode: InstallMode,
     force: bool = False,
+    project_dir: Path | None = None,
 ) -> None:
     """
     安装 skill 到目标目录
     1. 确定目标路径
     2. 检查是否已存在（覆盖提示）
     3. 根据 mode 复制或链接
+
+    Args:
+        skill: Skill 对象
+        agent: 目标 agent
+        scope: 安装范围
+        mode: 安装模式
+        force: 是否强制覆盖
+        project_dir: 项目目录（用于项目级安装）
     """
     # 确定目标 agent 列表
     if agent == AgentType.ALL:
@@ -40,7 +45,7 @@ def install_skill(
 
     # 对每个 agent 执行安装
     for target_agent in agents:
-        target_dir = get_target_dir(target_agent, scope)
+        target_dir = get_target_dir(target_agent, scope, project_dir)
         target_path = target_dir / skill.name
 
         # 检查是否已存在
@@ -75,32 +80,41 @@ def install_skill(
                         print(f"✗ 复制也失败: {copy_error}")
 
 
-def get_target_dir(agent: AgentType, scope: ScopeType) -> Path:
+def get_target_dir(agent: AgentType, scope: ScopeType, project_dir: Path | None = None) -> Path:
     """
     获取目标 skills 目录
     - 根据 agent 和 scope 确定路径
     - 如果目录不存在，自动创建
-    """
-    if agent == AgentType.CLAUDE:
-        target_dir = (
-            CLAUDE_USER_SKILLS_DIR
-            if scope == ScopeType.USER
-            else CLAUDE_PROJECT_SKILLS_DIR
-        )
-    elif agent == AgentType.CODEX:
-        target_dir = (
-            CODEX_USER_SKILLS_DIR
-            if scope == ScopeType.USER
-            else CODEX_PROJECT_SKILLS_DIR
-        )
-    else:
-        raise ValueError(f"不支持的 agent 类型: {agent}")
 
-    # 如果是项目级，检查是否是项目根目录
-    if scope == ScopeType.PROJECT:
-        cwd = Path.cwd()
-        if not check_project_root(cwd):
-            print(f"警告: 当前目录 '{cwd}' 不是项目根目录（未找到 .git 或 CLAUDE.md）")
+    Args:
+        agent: 目标 agent
+        scope: 安装范围
+        project_dir: 项目目录（用于项目级安装）
+
+    Returns:
+        目标 skills 目录路径
+    """
+    # 用户级路径
+    if scope == ScopeType.USER:
+        if agent == AgentType.CLAUDE:
+            target_dir = Path.home() / ".claude" / "skills"
+        elif agent == AgentType.CODEX:
+            target_dir = Path.home() / ".codex" / "skills"
+        else:
+            raise ValueError(f"不支持的 agent 类型: {agent}")
+    else:
+        # 项目级路径
+        project = project_dir or Path.cwd()
+        if agent == AgentType.CLAUDE:
+            target_dir = project / ".claude" / "skills"
+        elif agent == AgentType.CODEX:
+            target_dir = project / ".codex" / "skills"
+        else:
+            raise ValueError(f"不支持的 agent 类型: {agent}")
+
+        # 检查是否是项目根目录
+        if not find_project_root(project):
+            print(f"警告: 目录 '{project}' 不是项目根目录（未找到 .git、CLAUDE.md 或 AGENTS.md）")
             if not questionary.confirm("是否继续安装？").ask():
                 raise RuntimeError("用户取消安装")
 
@@ -161,12 +175,3 @@ def prompt_overwrite(skill_name: str, target: Path) -> bool:
     """
     print(f"\n警告：Skill '{skill_name}' 已存在于 {target}")
     return questionary.confirm("是否覆盖？").ask()
-
-
-def check_project_root(cwd: Path) -> bool:
-    """
-    检查当前目录是否是项目根目录
-    - 检查 .git 或 CLAUDE.md 是否存在
-    - 返回 True 表示是项目根目录
-    """
-    return (cwd / ".git").exists() or (cwd / "CLAUDE.md").exists()
