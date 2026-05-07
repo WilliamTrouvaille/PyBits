@@ -143,6 +143,15 @@ def recursive_find_skills(
         except OSError:
             return path
 
+    def _is_scannable_dir(path: Path) -> bool:
+        if path.is_symlink():
+            return False
+        if not path.is_dir():
+            return False
+        if path.name.startswith(".") or path.name.startswith("_"):
+            return False
+        return path.name not in excluded_dirs
+
     def _scan(path: Path, current_depth: int) -> None:
         if current_depth > max_depth:
             return
@@ -154,6 +163,13 @@ def recursive_find_skills(
 
         # 检查当前目录是否包含 SKILL.md
         if (path / "SKILL.md").exists():
+            nested_skills_dir = path / "skills"
+            if current_depth == 0 and _is_scannable_dir(nested_skills_dir):
+                found_count = len(skill_dirs)
+                _scan(nested_skills_dir, current_depth + 1)
+                if len(skill_dirs) > found_count:
+                    return
+
             skill_dirs.append(path)
             # 找到 skill 后不再向下扫描
             return
@@ -161,20 +177,11 @@ def recursive_find_skills(
         # 递归扫描子目录
         try:
             children = sorted(
-                (item for item in path.iterdir() if item.is_dir()),
-                key=lambda item: (item.is_symlink(), item.name.lower()),
+                (item for item in path.iterdir() if _is_scannable_dir(item)),
+                key=lambda item: item.name.lower(),
             )
 
             for item in children:
-                if item.is_symlink():
-                    continue
-
-                # 跳过隐藏目录、特殊目录和排除目录
-                if item.name.startswith(".") or item.name.startswith("_"):
-                    continue
-                if item.name in excluded_dirs:
-                    continue
-
                 _scan(item, current_depth + 1)
         except PermissionError:
             logger.warning(f"无权限访问目录: {path}")

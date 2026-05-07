@@ -8,6 +8,31 @@ from src.utils import recursive_find_skills
 
 
 class RecursiveFindSkillsTests(unittest.TestCase):
+    def test_prefers_root_skills_directory_over_root_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "SKILL.md").write_text(
+                "---\n"
+                "name: root-skill\n"
+                "description: Root wrapper skill\n"
+                "---\n",
+                encoding="utf-8",
+            )
+
+            nested_skill = root / "skills" / "writing-core"
+            nested_skill.mkdir(parents=True)
+            (nested_skill / "SKILL.md").write_text(
+                "---\n"
+                "name: writing-core\n"
+                "description: Nested writing skill\n"
+                "---\n",
+                encoding="utf-8",
+            )
+
+            skill_dirs = recursive_find_skills(root)
+
+        self.assertEqual(skill_dirs, [nested_skill])
+
     def test_skips_directory_symlinks_to_skills(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
