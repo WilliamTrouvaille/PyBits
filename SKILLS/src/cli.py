@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata as importlib_metadata
+import json
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import questionary
 from loguru import logger
@@ -71,8 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ls 命令（已有别名 list）
     list_parser = subparsers.add_parser(
-        "ls",
-        aliases=["list"],
+        "list",
+        aliases=["ls"],
         help="List registered repositories.",
     )
     list_parser.set_defaults(func=handle_list)
@@ -809,20 +812,60 @@ def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str,
 def find_skills_project_root() -> Path:
     """
     查找 SKILLS 项目根目录
-    优先从 CWD 向上查找 .repos.json
+    优先从 CWD 向上查找 .repos.json 或 SKILLS/.repos.json
     如果找不到，回退到代码所在目录
 
     Returns:
         SKILLS 项目根目录路径
     """
-    # 从 CWD 开始向上查找
+    # 从 CWD 开始向上查找，兼容在 PyBits 根目录执行全局安装的 SKILLS。
     cwd = Path.cwd()
-    for directory in [cwd] + list(cwd.parents):
+    for directory in [cwd, *cwd.parents]:
         if (directory / ".repos.json").exists():
             return directory
+        nested_skills_dir = directory / "SKILLS"
+        if (nested_skills_dir / ".repos.json").exists():
+            return nested_skills_dir
+
+    install_origin = find_project_root_from_install_origin()
+    if install_origin:
+        return install_origin
 
     # 回退到代码所在目录（向后兼容）
     return Path(__file__).parent.parent.resolve()
+
+
+def find_project_root_from_install_origin() -> Path | None:
+    """从本地安装 metadata 找回原始 checkout 中的 SKILLS 数据目录。"""
+    try:
+        distribution = importlib_metadata.distribution("pybits")
+    except importlib_metadata.PackageNotFoundError:
+        return None
+
+    direct_url_text = distribution.read_text("direct_url.json")
+    if not direct_url_text:
+        return None
+
+    try:
+        direct_url_data = json.loads(direct_url_text)
+    except json.JSONDecodeError:
+        return None
+
+    url = direct_url_data.get("url")
+    if not isinstance(url, str):
+        return None
+
+    parsed_url = urlparse(url)
+    if parsed_url.scheme != "file":
+        return None
+
+    origin_path = Path(unquote(parsed_url.path)).expanduser()
+    candidates = [origin_path / "SKILLS", origin_path]
+    for candidate in candidates:
+        if (candidate / ".repos.json").exists():
+            return candidate.resolve()
+
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -833,9 +876,8 @@ def main(argv: list[str] | None = None) -> int:
     if sys.stderr.encoding != "utf-8":
         sys.stderr.reconfigure(encoding="utf-8")
 
-    # 加载配置
-    settings = load_settings()
     project_root = find_skills_project_root()
+    settings = load_settings(project_root / "settings.yaml")
     paths = get_effective_paths(settings, project_root)
 
     # 设置日志
