@@ -7,8 +7,8 @@
 ```
 PyBits/
 ├── HELLO/              # Claude Code 和 Codex CLI 连通性探测工具
+├── PTM/                # PDF 转 Markdown 工具
 ├── SKILLS/             # Skills 仓库管理和安装工具
-├── CLI/                # 命令行脚本（zsh/PowerShell）
 ├── pyproject.toml      # 统一依赖管理
 └── README.md
 ```
@@ -25,6 +25,12 @@ PyBits/
 ```bash
 cd PyBits
 uv sync
+```
+
+如需使用 PTM，安装包含 MinerU full extra 的依赖：
+
+```bash
+uv sync --extra ptm
 ```
 
 ## 工具说明
@@ -142,19 +148,34 @@ SKILLS remove vercel-labs/skills
 
 ---
 
-## CLI 脚本
+### PTM
 
-`CLI/` 目录包含各工具的命令行包装脚本：
+基于 MinerU 的 PDF 转 Markdown 工具，支持自动模型下载、超时控制和图片提取。
 
-- `CLI/HELLO`：HELLO 工具的 zsh 包装脚本
-- `CLI/SKILLS`：SKILLS 工具的 zsh 包装脚本
-
-这些脚本可以添加到 `PATH` 中，方便全局调用：
+**使用示例**：
 
 ```bash
-# 添加到 ~/.zshrc 或 ~/.bashrc
-export PATH="/Users/trouva/CODE/PYTHON/PyBits/CLI:$PATH"
+# 转换 PDF 到同目录 Markdown
+PTM input.pdf
+
+# 指定输出目录
+PTM input.pdf --out-dir /path/to/output
+
+# 提取图片
+PTM input.pdf --images
 ```
+
+详细文档：[PTM/README.md](PTM/README.md)
+
+---
+
+## 全局命令
+
+项目通过 `pyproject.toml` 的 `[project.scripts]` 暴露全局命令。安装后可在任意目录直接调用：
+
+- `HELLO`
+- `SKILLS`
+- `PTM`
 
 ## 依赖管理
 
@@ -166,6 +187,7 @@ export PATH="/Users/trouva/CODE/PYTHON/PyBits/CLI:$PATH"
 - `pyyaml`：YAML 解析
 - `rich`：终端输出美化
 - `ruff`：代码检查和格式化
+- `magic-pdf[full]`：PTM 可选依赖，使用 `uv sync --extra ptm` 安装
 
 ## 开发
 

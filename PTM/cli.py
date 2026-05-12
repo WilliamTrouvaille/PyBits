@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from PTM.core import check_and_download_models, convert_pdf
+from PTM.core import convert_pdf, prepare_mineru_runtime
 from PTM.utils import format_error, generate_timestamp, validate_output_dir, validate_pdf
 
 logger.remove()
@@ -68,10 +68,7 @@ def validate_args(args: argparse.Namespace) -> tuple[Path, Path, str]:
             "ERROR: 超时时间必须为正整数", f"HINT: 当前值为 {args.timeout}，请提供大于 0 的整数"
         )
 
-    if args.out_dir:
-        output_dir = Path(args.out_dir).resolve()
-    else:
-        output_dir = input_pdf.parent
+    output_dir = Path(args.out_dir).resolve() if args.out_dir else input_pdf.parent
 
     timestamp = generate_timestamp()
     output_filename = f"{input_pdf.stem}_PTM_{timestamp}.md"
@@ -94,11 +91,11 @@ def main() -> None:
     logger.info(f"图片输出: {'启用' if args.images else '禁用'}")
     logger.info(f"超时时间: {args.timeout} 秒")
 
-    if not check_and_download_models(args.model_source, args.proxy):
-        format_error(
-            "ERROR: 模型检查或下载失败",
-            "HINT: 请检查网络连接或手动运行 magic-pdf --download-models",
-        )
+    success, mineru_config, error_msg, hint_msg = prepare_mineru_runtime(
+        args.model_source, args.proxy
+    )
+    if not success or mineru_config is None:
+        format_error(error_msg, hint_msg)
 
     success, error_msg, hint_msg = convert_pdf(
         input_pdf=input_pdf,
@@ -109,6 +106,7 @@ def main() -> None:
         timeout=args.timeout,
         model_source=args.model_source,
         proxy=args.proxy,
+        mineru_config=mineru_config,
     )
 
     if not success:

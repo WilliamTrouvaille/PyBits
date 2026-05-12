@@ -205,8 +205,8 @@ logs_dir: null         # 默认: SKILLS/logs
 
 - `--agent <claude|codex|all>`：指定目标 agent，默认 `all`
 - `--scope <user|project>`：指定安装范围，**必须指定**
-  - `user`：安装到用户级 skills 目录（`~/.claude/skills/` 或 `~/.codex/skills/`）
-  - `project`：安装到项目级 skills 目录（`.claude/skills/` 或 `.codex/skills/`）
+  - `user`：安装到用户级 skills 目录（`~/.claude/skills/` 或 `~/.agents/skills/`）
+  - `project`：安装到项目级 skills 目录（`.claude/skills/` 或 `.agents/skills/`）
 - `--mode <copy|link>`：指定安装模式，默认 `copy`
   - `copy`：复制 skill 目录
   - `link`：创建链接（Windows 使用 Junction，Mac/Linux 使用 symlink）

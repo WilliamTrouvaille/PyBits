@@ -99,7 +99,7 @@ def get_target_dir(agent: AgentType, scope: ScopeType, project_dir: Path | None 
         if agent == AgentType.CLAUDE:
             target_dir = Path.home() / ".claude" / "skills"
         elif agent == AgentType.CODEX:
-            target_dir = Path.home() / ".codex" / "skills"
+            target_dir = Path.home() / ".agents" / "skills"
         else:
             raise ValueError(f"不支持的 agent 类型: {agent}")
     else:
@@ -108,13 +108,16 @@ def get_target_dir(agent: AgentType, scope: ScopeType, project_dir: Path | None 
         if agent == AgentType.CLAUDE:
             target_dir = project / ".claude" / "skills"
         elif agent == AgentType.CODEX:
-            target_dir = project / ".codex" / "skills"
+            target_dir = project / ".agents" / "skills"
         else:
             raise ValueError(f"不支持的 agent 类型: {agent}")
 
         # 检查是否是项目根目录
         if not find_project_root(project):
-            print(f"警告: 目录 '{project}' 不是项目根目录（未找到 .git、CLAUDE.md 或 AGENTS.md）")
+            print(
+                f"警告: 目录 '{project}' 不是项目根目录"
+                "（未找到 .git、CLAUDE.md、AGENTS.md 或 .agents）"
+            )
             if not questionary.confirm("是否继续安装？").ask():
                 raise RuntimeError("用户取消安装")
 

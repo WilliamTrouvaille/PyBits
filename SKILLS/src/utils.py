@@ -312,6 +312,7 @@ def find_project_root(start_dir: Path) -> Path | None:
         "CLAUDE.md",
         "AGENTS.md",
         "pyproject.toml",
+        ".agents",
         ".codex",
     ]
 

@@ -31,6 +31,22 @@
       "path": null,
       "local_path": null,
       "registered_at": "2026-05-08T00:12:27.227223"
+    },
+    {
+      "name": "LigphiDonk/Oh-my--paper",
+      "type": "github",
+      "url": "https://github.com/LigphiDonk/Oh-my--paper.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-05-08T17:17:45.859054"
+    },
+    {
+      "name": "leo-lilinxiao/codex-autoresearch",
+      "type": "github",
+      "url": "https://github.com/leo-lilinxiao/codex-autoresearch.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-05-10T14:17:09.885854"
     }
   ]
 }
