@@ -767,11 +767,11 @@ def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str,
 
     # User-level paths
     claude_user_skills_dir = PathlibPath.home() / ".claude" / "skills"
-    codex_user_skills_dir = PathlibPath.home() / ".codex" / "skills"
+    codex_user_skills_dir = PathlibPath.home() / ".agents" / "skills"
 
     # Project-level paths (use current working directory)
     claude_project_skills_dir = PathlibPath.cwd() / ".claude" / "skills"
-    codex_project_skills_dir = PathlibPath.cwd() / ".codex" / "skills"
+    codex_project_skills_dir = PathlibPath.cwd() / ".agents" / "skills"
 
     claude_user_skills = scan_skills_dir(claude_user_skills_dir)
     claude_project_skills = scan_skills_dir(claude_project_skills_dir)
