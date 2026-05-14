@@ -4,12 +4,13 @@
 
 ## 项目结构
 
-- `<TOOL_NAME>/`：各工具的独立目录。目录内 Python 文件使用 `snake_case.py`。其中将工具目录规范化为：
+- `<TOOL_NAME>/`：各工具的独立目录。目录内 Python 文件使用 `snake_case.py`。其中将文件和目录规范化为：
   - `<TOOL_NAME>/README.md`
   - `<TOOL_NAME>/cli.py`
+  - （可选）`<TOOL_NAME>/.env`、`<TOOL_NAME>/setting.yaml`
   - `<TOOL_NAME>/src/`
   - `<TOOL_NAME>/logs/`
-  - `<TOOL_NAME>/tests/`（可选）
+  - （可选）`<TOOL_NAME>/tests/`
 - `pyproject.toml`：统一依赖管理，脚本内不重复声明依赖。
 - `.codex/`：Codex 的工作文件夹。
   - `.codex/_trash_bin_`：垃圾桶，用于存放软删除的文件。
