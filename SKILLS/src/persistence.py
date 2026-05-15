@@ -34,25 +34,27 @@ def save_local_config(data: dict, repos_local_json_path: Path) -> None:
     lock = FileLock(f"{repos_local_json_path}.lock")
     try:
         with lock:
-            temp_file = tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", delete=False, dir=repos_local_json_path.parent
-            )
+            temp_path: Path | None = None
             try:
-                json.dump(data, temp_file, indent=2, ensure_ascii=False)
-                temp_file.flush()
-                temp_file.close()
-                Path(temp_file.name).replace(repos_local_json_path)
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    delete=False,
+                    dir=repos_local_json_path.parent,
+                ) as temp_file:
+                    temp_path = Path(temp_file.name)
+                    json.dump(data, temp_file, indent=2, ensure_ascii=False)
+                    temp_file.flush()
+                temp_path.replace(repos_local_json_path)
             finally:
-                if Path(temp_file.name).exists():
-                    Path(temp_file.name).unlink()
+                if temp_path is not None and temp_path.exists():
+                    temp_path.unlink()
     except Exception as e:
         logger.error(f"保存本地配置失败: {e}")
         raise
 
 
-def load_repositories(
-    repos_json_path: Path, repos_local_json_path: Path
-) -> list[Repository]:
+def load_repositories(repos_json_path: Path, repos_local_json_path: Path) -> list[Repository]:
     """
     加载所有已注册的仓库（合并两个配置文件）
     1. 加载 .repos.json（所有仓库元信息，path/local_path 为 None）
@@ -80,10 +82,7 @@ def load_repositories(
             with open(repos_json_path, encoding="utf-8") as f:
                 data = json.load(f)
 
-            repos = [
-                Repository.from_dict(repo_data)
-                for repo_data in data.get("repositories", [])
-            ]
+            repos = [Repository.from_dict(repo_data) for repo_data in data.get("repositories", [])]
 
             # 加载路径映射表（在同一个锁保护范围内）
             local_config = load_local_config(repos_local_json_path)
@@ -125,17 +124,21 @@ def save_repositories(
         with lock:
             # 保存 .repos.json（所有仓库元信息），原子写入
             data = {"repositories": [repo.to_dict() for repo in repos]}
-            temp_file = tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", delete=False, dir=repos_json_path.parent
-            )
+            temp_path: Path | None = None
             try:
-                json.dump(data, temp_file, indent=2, ensure_ascii=False)
-                temp_file.flush()
-                temp_file.close()
-                Path(temp_file.name).replace(repos_json_path)
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    delete=False,
+                    dir=repos_json_path.parent,
+                ) as temp_file:
+                    temp_path = Path(temp_file.name)
+                    json.dump(data, temp_file, indent=2, ensure_ascii=False)
+                    temp_file.flush()
+                temp_path.replace(repos_json_path)
             finally:
-                if Path(temp_file.name).exists():
-                    Path(temp_file.name).unlink()
+                if temp_path is not None and temp_path.exists():
+                    temp_path.unlink()
             logger.debug(f"保存了 {len(repos)} 个仓库到 {repos_json_path}")
 
             # 构建路径映射表
@@ -160,9 +163,7 @@ def save_repositories(
         raise
 
 
-def add_repository(
-    repo: Repository, repos_json_path: Path, repos_local_json_path: Path
-) -> None:
+def add_repository(repo: Repository, repos_json_path: Path, repos_local_json_path: Path) -> None:
     """添加新仓库（检查重复）"""
     repos = load_repositories(repos_json_path, repos_local_json_path)
 
@@ -175,9 +176,7 @@ def add_repository(
     logger.info(f"添加仓库: {repo.name}")
 
 
-def update_repository(
-    repo: Repository, repos_json_path: Path, repos_local_json_path: Path
-) -> None:
+def update_repository(repo: Repository, repos_json_path: Path, repos_local_json_path: Path) -> None:
     """
     更新已存在的仓库记录
     - 如果仓库不存在，抛出异常
@@ -200,9 +199,7 @@ def update_repository(
     logger.info(f"更新仓库: {repo.name}")
 
 
-def remove_repository(
-    name: str, repos_json_path: Path, repos_local_json_path: Path
-) -> bool:
+def remove_repository(name: str, repos_json_path: Path, repos_local_json_path: Path) -> bool:
     """移除指定仓库"""
     repos = load_repositories(repos_json_path, repos_local_json_path)
     original_count = len(repos)

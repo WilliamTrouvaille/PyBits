@@ -28,11 +28,10 @@ from rich.console import Console
 console = Console()
 console_err = Console(stderr=True)
 
-# 项目根目录和缓存目录
-SCRIPT_DIR = Path(__file__).parent
-PROJECT_ROOT = SCRIPT_DIR.parent
-CACHE_ROOT = SCRIPT_DIR / ".paper"
-LOG_DIR = SCRIPT_DIR / "logs"
+# 工具根目录和缓存目录
+TOOL_ROOT = Path(__file__).resolve().parents[1]
+CACHE_ROOT = TOOL_ROOT / ".paper"
+LOG_DIR = TOOL_ROOT / "logs"
 
 
 def extract_arxiv_id(raw: str) -> tuple[str, bool]:

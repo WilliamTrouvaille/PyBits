@@ -8,7 +8,7 @@ import os
 import re
 import shlex
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,11 +20,7 @@ def utc_now() -> str:
     Returns:
         ISO8601 格式的时间戳，例如 "2026-05-04T14:30:22.123Z"
     """
-    return (
-        datetime.now(timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def expand_path(value: str | Path) -> Path:

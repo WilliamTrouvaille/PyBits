@@ -11,26 +11,19 @@ from typing import Any
 
 from loguru import logger
 
-from .lib import (
-    DEFAULT_PROMPT,
-    DEFAULT_TAIL_CHARS,
-    DEFAULT_TIMEOUT,
-    SCHEMA_VERSION,
+from .auth_checker import missing_cli_result, summarize_auth_check
+from .config_parser import config_summary
+from .constants import DEFAULT_PROMPT, DEFAULT_TAIL_CHARS, DEFAULT_TIMEOUT, SCHEMA_VERSION
+from .probe_builder import (
     assemble_service_result,
     build_claude_command,
     build_codex_command,
     build_process_result,
-    config_summary,
-    expand_path,
-    get_version,
-    missing_cli_result,
-    normalize_claude_response,
-    normalize_codex_response,
-    run_process,
-    summarize_auth_check,
-    utc_now,
 )
-from .lib.schema import AuthSummary, ProbeEnvelope, ServiceResult
+from .process import get_version, run_process
+from .response_normalizer import normalize_claude_response, normalize_codex_response
+from .schema import AuthSummary, ProbeEnvelope, ServiceResult
+from .utils import expand_path, utc_now
 
 
 def probe_claude(
@@ -209,9 +202,7 @@ def probe_codex(
         auth = summarize_auth_check("codex", auth_res)
 
     # 创建临时目录并执行请求
-    with tempfile.TemporaryDirectory(
-        prefix="codex-hello-probe-", ignore_cleanup_errors=True
-    ) as td:
+    with tempfile.TemporaryDirectory(prefix="codex-hello-probe-", ignore_cleanup_errors=True) as td:
         temp_dir = Path(td)
         last_message_path = temp_dir / "last_message.txt"
         codex_cd_path = expand_path(codex_cd) if codex_cd else temp_dir
@@ -370,9 +361,7 @@ def execute_parallel(
 
     # 保持结果顺序
     results.sort(
-        key=lambda x: services.index(
-            "claude" if x["service"] == "claude_code" else x["service"]
-        )
+        key=lambda x: services.index("claude" if x["service"] == "claude_code" else x["service"])
     )
 
     ok = all(item.get("ok") is True for item in results)

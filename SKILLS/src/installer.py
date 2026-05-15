@@ -38,10 +38,7 @@ def install_skill(
         project_dir: 项目目录（用于项目级安装）
     """
     # 确定目标 agent 列表
-    if agent == AgentType.ALL:
-        agents = [AgentType.CLAUDE, AgentType.CODEX]
-    else:
-        agents = [agent]
+    agents = [AgentType.CLAUDE, AgentType.CODEX] if agent == AgentType.ALL else [agent]
 
     # 对每个 agent 执行安装
     for target_agent in agents:
@@ -49,10 +46,13 @@ def install_skill(
         target_path = target_dir / skill.name
 
         # 检查是否已存在
-        if check_existing_skill(target_path) and not force:
-            if not prompt_overwrite(skill.name, target_path):
-                logger.info(f"跳过安装: {skill.name} -> {target_path}")
-                continue
+        if (
+            check_existing_skill(target_path)
+            and not force
+            and not prompt_overwrite(skill.name, target_path)
+        ):
+            logger.info(f"跳过安装: {skill.name} -> {target_path}")
+            continue
 
         # 执行安装
         try:
@@ -69,15 +69,17 @@ def install_skill(
             print(f"✗ 安装失败: {skill.name}, 错误: {e}")
 
             # link 模式失败时询问是否改用 copy
-            if mode == InstallMode.LINK:
-                if questionary.confirm("链接创建失败，是否改用复制模式？").ask():
-                    try:
-                        copy_skill(skill.source_path, target_path)
-                        logger.info(f"复制 skill: {skill.name} -> {target_path}")
-                        print(f"✓ 安装成功（复制模式）: {skill.name} -> {target_path}")
-                    except Exception as copy_error:
-                        logger.error(f"复制也失败: {copy_error}")
-                        print(f"✗ 复制也失败: {copy_error}")
+            if (
+                mode == InstallMode.LINK
+                and questionary.confirm("链接创建失败，是否改用复制模式？").ask()
+            ):
+                try:
+                    copy_skill(skill.source_path, target_path)
+                    logger.info(f"复制 skill: {skill.name} -> {target_path}")
+                    print(f"✓ 安装成功（复制模式）: {skill.name} -> {target_path}")
+                except Exception as copy_error:
+                    logger.error(f"复制也失败: {copy_error}")
+                    print(f"✗ 复制也失败: {copy_error}")
 
 
 def get_target_dir(agent: AgentType, scope: ScopeType, project_dir: Path | None = None) -> Path:

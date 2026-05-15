@@ -48,9 +48,7 @@ def summarize_auth_check(name: str, res: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def missing_cli_result(
-    service: str, binary_name: str, cfg: dict[str, Any]
-) -> dict[str, Any]:
+def missing_cli_result(service: str, binary_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
     """
     生成 CLI 工具缺失时的标准化结果
 

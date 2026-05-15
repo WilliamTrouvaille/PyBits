@@ -27,9 +27,8 @@ def expand_services(values: list[str] | None) -> list[str]:
         if value in ("claude", "cc", "claude_code"):
             if "claude" not in out:
                 out.append("claude")
-        elif value == "codex":
-            if "codex" not in out:
-                out.append("codex")
+        elif value == "codex" and "codex" not in out:
+            out.append("codex")
 
     return out
 

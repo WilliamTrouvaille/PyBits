@@ -23,9 +23,7 @@ def validate_skill(skill_dir: Path) -> bool:
         logger.warning(
             f"Skill 不合法（frontmatter 格式错误或缺少必需字段），跳过: {skill_dir.name}"
         )
-        print(
-            f"警告: Skill '{skill_dir.name}' 不合法（frontmatter 格式错误或缺少必需字段），跳过"
-        )
+        print(f"警告: Skill '{skill_dir.name}' 不合法（frontmatter 格式错误或缺少必需字段），跳过")
         return False
 
     return True

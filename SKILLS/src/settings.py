@@ -47,7 +47,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
     从 YAML 文件加载配置
 
     Args:
-        config_path: 配置文件路径，默认为 SKILLS/settings.yaml
+        config_path: 配置文件路径，默认为 SKILLS/setting.yaml
 
     Returns:
         Settings 对象
@@ -57,7 +57,7 @@ def load_settings(config_path: Path | None = None) -> Settings:
     """
     if config_path is None:
         project_root = Path(__file__).parent.parent.resolve()
-        config_path = project_root / "settings.yaml"
+        config_path = project_root / "setting.yaml"
 
     if not config_path.exists():
         return Settings()
@@ -82,10 +82,10 @@ def load_settings(config_path: Path | None = None) -> Settings:
     if "excluded_dirs" in data and isinstance(data["excluded_dirs"], list):
         settings.excluded_dirs = set(data["excluded_dirs"])
 
-    if "repos_cache_dir" in data and data["repos_cache_dir"]:
+    if data.get("repos_cache_dir"):
         settings.repos_cache_dir = Path(data["repos_cache_dir"])
 
-    if "logs_dir" in data and data["logs_dir"]:
+    if data.get("logs_dir"):
         settings.logs_dir = Path(data["logs_dir"])
 
     return settings

@@ -77,9 +77,7 @@ class Spinner:
 
 
 @contextmanager
-def with_spinner(
-    message: str, final_message: str | None = None
-) -> Generator[Spinner]:
+def with_spinner(message: str, final_message: str | None = None) -> Generator[Spinner]:
     """
     Spinner 上下文管理器
 
