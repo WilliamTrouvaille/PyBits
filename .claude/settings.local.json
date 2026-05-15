@@ -5,7 +5,13 @@
       "Bash(where *)",
       "Bash(npm list *)",
       "Bash(uv sync *)",
-      "Bash(chmod +x /Users/trouva/CODE/PYTHON/PyBits/CLI/PTM)"
+      "Bash(chmod +x /Users/trouva/CODE/PYTHON/PyBits/CLI/PTM)",
+      "mcp__fetch__fetch",
+      "mcp__filesystem__write_file",
+      "Bash(mkdir -p /Users/trouva/CODE/PYTHON/PyBits/.claude/plans)"
+    ],
+    "additionalDirectories": [
+      "/Users/trouva/CODE/PYTHON/PyBits/.claude/plans"
     ]
   }
 }

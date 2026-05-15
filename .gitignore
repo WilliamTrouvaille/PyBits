@@ -1,16 +1,14 @@
-# Python
 **/__pycache__/
 uv.lock
-
-# Logs
-SKILLS/logs/
-HELLO/logs/
-
-SKILLS/_repos_cache
-CLI/
+*.egg-info/
 build/
 
-ATP/.paper
-*.egg-info/
-
+SKILLS/logs/
 SKILLS/tests/
+SKILLS/_repos_cache
+
+ATP/.paper
+
+HELLO/logs/
+
+PTM/.env

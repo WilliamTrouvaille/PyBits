@@ -37,7 +37,7 @@
 - 依赖统一写入 `pyproject.toml`，脚本内不使用 inline dependency 块。
 - 新工具或重大改动前，先确认命令名、输入输出、依赖清单、测试样例，以及是否需要配置文件。
 - 修改代码、入口或依赖后，运行 `uv tool install --force --reinstall --refresh .` 刷新已安装工具。
-- 外部环境测试（不可省略）：脱离项目沙盒，在外部目录`~/TEMP/pybits_tests/TEST-<TOOL_NAME>-<timestamp>`测试全局命令，验证基本功能、边界情况、错误处理。
+- 环境测试（不可省略）：使用`_shared/tests/`下的脚本进行测试，若测试不通过须进行调整。
 - 校验必须包含项目外目录调用，至少覆盖 `--help` 和核心路径；失败时说明测试目录、命令和错误。
 
 
@@ -57,11 +57,11 @@ Codex 不应擅自扩展为：
 
 ## 充分理解用户需求
 
-自动调用 `/grill-me`（如果读取不到，需要停止任务并报告用户），充分理解用户需求。
+自动调用 `$grill-me`（如果读取不到，需要停止任务并报告用户），充分理解用户需求。
 
 提出问题的时候尽量附带必请将所有问题进行分组（每个小组可以仅有单个问题）并提供可供参考的若干方案，以便提高效率。
 
-编写代码相关规划直接参考/python-engineering 即可不必询问用户。
+编写代码相关规划直接参考`$python-engineering` 即可不必询问用户。
 
 ## 理解上下文
 
@@ -89,7 +89,7 @@ Codex 不应擅自扩展为：
 
 ## 执行
 
-- 使用SKILL /python-engineering （.claude\skills\python-engineering）编写Python代码。
+- 使用`$python-engineering`编写Python代码。
 - 只做用户请求的内容；
 - 优先最小改动；
 - 优先复用现有结构；
