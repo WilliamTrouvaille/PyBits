@@ -11,6 +11,8 @@
   - `<TOOL_NAME>/src/`
   - `<TOOL_NAME>/logs/`
   - （可选）`<TOOL_NAME>/tests/`
+- `_shared/`:本项目的共享代码文件夹。
+  - `_shared/tests/`：本项目的共享测试脚本目录，**所有子项目编写完毕或进行修改后必须使用该目录下的所有测试脚本进行测试**。
 - `pyproject.toml`：统一依赖管理，脚本内不重复声明依赖。
 - `.codex/`：Codex 的工作文件夹。
   - `.codex/_trash_bin_`：垃圾桶，用于存放软删除的文件。
