@@ -20,7 +20,7 @@ SKILLS/
 ├── logs/                   # 日志文件（不同步）
 ├── .repos.json             # 仓库元信息（同步）
 ├── .repos.local.json       # 本地路径映射（不同步）
-├── settings.yaml           # 配置文件
+├── setting.yaml            # 配置文件
 ├── src/                    # Python 源代码
 └── README.md
 ```
@@ -169,7 +169,7 @@ SKILLS clean
 
 ## 配置文件
 
-配置文件位于 `SKILLS/settings.yaml`，可以自定义以下选项：
+配置文件位于 `SKILLS/setting.yaml`，可以自定义以下选项：
 
 ```yaml
 # 日志配置

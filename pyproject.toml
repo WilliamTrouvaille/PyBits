@@ -1,7 +1,8 @@
 [project]
 name = "pybits"
+
 version = "0.1.0"
-description = "Add your description here"
+description = "独立 Python 小工具集合"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -18,8 +19,9 @@ dependencies = [
 
 [project.scripts]
 HELLO = "HELLO.cli:main"
-SKILLS = "SKILLS.src.cli:main"
+SKILLS = "SKILLS.cli:main"
 PTM = "PTM.cli:main"
+ATP = "ATP.cli:main"
 
 [tool.uv]
 package = true
@@ -30,5 +32,5 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["HELLO*", "SKILLS*", "PTM*"]
+include = ["HELLO*", "SKILLS*", "PTM*", "ATP*"]
 exclude = ["SKILLS._repos_cache*"]

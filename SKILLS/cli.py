@@ -14,9 +14,9 @@ from loguru import logger
 from rich.console import Console
 from rich.table import Table
 
-from .installer import install_skill
-from .models import AgentType, InstallMode, RepositoryType, ScopeType, Skill
-from .persistence import (
+from .src.installer import install_skill
+from .src.models import AgentType, InstallMode, RepositoryType, ScopeType, Skill
+from .src.persistence import (
     add_repository,
     get_repository,
     load_repositories,
@@ -24,14 +24,14 @@ from .persistence import (
     repository_exists,
     update_repository,
 )
-from .repository import (
+from .src.repository import (
     parse_github_url,
     register_github_repo,
     register_local_repo,
     scan_repository,
 )
-from .settings import Settings, get_effective_paths, load_settings
-from .utils import setup_logger
+from .src.settings import Settings, get_effective_paths, load_settings
+from .src.utils import setup_logger
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,12 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
         aliases=["rg"],
         help="Register a GitHub repository or local skills directory.",
     )
-    register_parser.add_argument(
-        "source", help="GitHub URL/owner-repo shorthand or local path."
-    )
-    register_parser.add_argument(
-        "--name", help="Repository name for local registrations."
-    )
+    register_parser.add_argument("source", help="GitHub URL/owner-repo shorthand or local path.")
+    register_parser.add_argument("--name", help="Repository name for local registrations.")
     register_parser.add_argument(
         "--proxy", help="HTTP(S) proxy used when cloning GitHub repositories."
     )
@@ -90,12 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
     remove_parser.set_defaults(func=handle_remove)
 
     # scan 命令
-    scan_parser = subparsers.add_parser(
-        "scan", help="Scan registered repositories for skills."
-    )
-    scan_parser.add_argument(
-        "repository", nargs="?", help="Repository name. Omit to scan all."
-    )
+    scan_parser = subparsers.add_parser("scan", help="Scan registered repositories for skills.")
+    scan_parser.add_argument("repository", nargs="?", help="Repository name. Omit to scan all.")
     scan_parser.add_argument(
         "--depth",
         type=int,
@@ -108,9 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser = subparsers.add_parser(
         "install", help="Install skills from a registered repository."
     )
-    install_parser.add_argument(
-        "repository", nargs="?", help="Registered repository name."
-    )
+    install_parser.add_argument("repository", nargs="?", help="Registered repository name.")
     install_parser.add_argument("skills", nargs="*", help="Skill names to install.")
     install_parser.add_argument(
         "--agent",
@@ -256,9 +246,7 @@ def handle_register(args: argparse.Namespace, settings: Settings, paths: dict[st
         for skill in skills[:display_count]:
             print(f"  {skill.name:<20} {skill.description}")
         if len(skills) > 5:
-            print(
-                f"  ...还有 {len(skills) - 5} 个 skill，使用 SKILLS scan 查看完整列表"
-            )
+            print(f"  ...还有 {len(skills) - 5} 个 skill，使用 SKILLS scan 查看完整列表")
 
     # 保存或更新仓库记录
     if repository_exists(repo_name, paths["repos_json_path"], paths["repos_local_json_path"]):
@@ -286,7 +274,13 @@ def handle_list(args: argparse.Namespace, settings: Settings, paths: dict[str, P
     table.add_column("Source", style="dim")
 
     for repo in repos:
-        source = repo.url if repo.type == RepositoryType.GITHUB else str(repo.path) if repo.path else "N/A"
+        source = (
+            repo.url
+            if repo.type == RepositoryType.GITHUB
+            else str(repo.path)
+            if repo.path
+            else "N/A"
+        )
         table.add_row(repo.type.value, repo.name, source)
 
     console.print(table)
@@ -313,7 +307,9 @@ def handle_scan(args: argparse.Namespace, settings: Settings, paths: dict[str, P
 
     if args.repository:
         # 非交互式：扫描指定仓库
-        repo = get_repository(args.repository, paths["repos_json_path"], paths["repos_local_json_path"])
+        repo = get_repository(
+            args.repository, paths["repos_json_path"], paths["repos_local_json_path"]
+        )
         if not repo:
             print(f"仓库不存在: {args.repository}", file=sys.stderr)
             return 1
@@ -331,9 +327,7 @@ def handle_scan(args: argparse.Namespace, settings: Settings, paths: dict[str, P
             ]
             repo_labels.append("[扫描所有仓库]")
 
-            selected_label = questionary.select(
-                "选择要扫描的仓库:", choices=repo_labels
-            ).ask()
+            selected_label = questionary.select("选择要扫描的仓库:", choices=repo_labels).ask()
 
             if not selected_label:
                 logger.info("[用户操作] 取消扫描")
@@ -357,7 +351,9 @@ def handle_scan(args: argparse.Namespace, settings: Settings, paths: dict[str, P
             skills = scan_repository(repo, args.depth, settings.excluded_dirs)
             logger.info(f"[用户操作] 扫描结果: {repo.name} - {len(skills)} 个 skill")
 
-            table = Table(title=f"{repo.name}: {len(skills)} 个 skill", show_header=True, header_style="bold")
+            table = Table(
+                title=f"{repo.name}: {len(skills)} 个 skill", show_header=True, header_style="bold"
+            )
             table.add_column("Skill Name", style="green", width=25)
             table.add_column("Description", style="dim")
 
@@ -399,7 +395,10 @@ def handle_install(args: argparse.Namespace, settings: Settings, paths: dict[str
         print(f"仓库不存在: {args.repository}", file=sys.stderr)
         return 1
 
-    available_skills = {skill.name: skill for skill in scan_repository(repo, settings.default_scan_depth, settings.excluded_dirs)}
+    available_skills = {
+        skill.name: skill
+        for skill in scan_repository(repo, settings.default_scan_depth, settings.excluded_dirs)
+    }
     missing_skills = [
         skill_name for skill_name in args.skills if skill_name not in available_skills
     ]
@@ -436,9 +435,7 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
         return 1
 
     repo_labels = [f"{repo.name} ({repo.type.value})" for repo in repos]
-    selected_repo_label = questionary.select(
-        "选择要安装的仓库:", choices=repo_labels
-    ).ask()
+    selected_repo_label = questionary.select("选择要安装的仓库:", choices=repo_labels).ask()
     if not selected_repo_label:
         logger.info("[用户操作] 取消安装 (未选择仓库)")
         print("安装已取消。")
@@ -482,9 +479,7 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
         print("安装已取消。")
         return 1
 
-    selected_skills = [
-        skills[skill_labels.index(label)] for label in selected_skill_labels
-    ]
+    selected_skills = [skills[skill_labels.index(label)] for label in selected_skill_labels]
 
     skill_names_str = ", ".join(skill.name for skill in selected_skills)
     logger.info(
@@ -542,9 +537,7 @@ def handle_build(args: argparse.Namespace, settings: Settings, paths: dict[str, 
 
     # 筛选出需要重建的 GitHub 仓库
     github_repos = [r for r in repos if r.type == RepositoryType.GITHUB]
-    missing_repos = [
-        r for r in github_repos if not r.local_path or not r.local_path.exists()
-    ]
+    missing_repos = [r for r in github_repos if not r.local_path or not r.local_path.exists()]
 
     if not missing_repos:
         print("所有 GitHub 仓库的缓存都已存在，无需重建。")
@@ -560,9 +553,7 @@ def handle_build(args: argparse.Namespace, settings: Settings, paths: dict[str, 
         if not repo.path or not repo.path.exists():
             print(f"  {repo.name} ({repo.type.value}) - 本地路径不存在，跳过")
 
-    if not questionary.confirm(
-        f"\n是否重建缺失的 {len(missing_repos)} 个 GitHub 仓库缓存？"
-    ).ask():
+    if not questionary.confirm(f"\n是否重建缺失的 {len(missing_repos)} 个 GitHub 仓库缓存？").ask():
         logger.info("[用户操作] 取消重建缓存")
         print("重建已取消。")
         return 1
@@ -622,7 +613,9 @@ def handle_update(args: argparse.Namespace, settings: Settings, paths: dict[str,
         # 非交互式：指定仓库名称
         repos_to_update = []
         for repo_name in args.repository:
-            repo = get_repository(repo_name, paths["repos_json_path"], paths["repos_local_json_path"])
+            repo = get_repository(
+                repo_name, paths["repos_json_path"], paths["repos_local_json_path"]
+            )
             if not repo:
                 print(f"仓库不存在: {repo_name}", file=sys.stderr)
                 return 1
@@ -647,16 +640,12 @@ def handle_update(args: argparse.Namespace, settings: Settings, paths: dict[str,
             print("更新已取消。")
             return 1
 
-        repos_to_update = [
-            github_repos[repo_labels.index(label)] for label in selected_labels
-        ]
+        repos_to_update = [github_repos[repo_labels.index(label)] for label in selected_labels]
 
     repo_names = ", ".join(r.name for r in repos_to_update)
     logger.info(f"[用户操作] 更新仓库: {repo_names}")
 
-    if not questionary.confirm(
-        f"\n是否更新选中的 {len(repos_to_update)} 个仓库？"
-    ).ask():
+    if not questionary.confirm(f"\n是否更新选中的 {len(repos_to_update)} 个仓库？").ask():
         logger.info("[用户操作] 取消更新 (用户拒绝确认)")
         print("更新已取消。")
         return 1
@@ -676,16 +665,10 @@ def handle_update(args: argparse.Namespace, settings: Settings, paths: dict[str,
             for skill in skills[:display_count]:
                 print(f"  {skill.name:<20} {skill.description}")
             if len(skills) > 5:
-                print(
-                    f"  ...还有 {len(skills) - 5} 个 skill，使用 SKILLS scan 查看完整列表"
-                )
-            print(
-                f"以下 skills 可能有新版本: {', '.join(s.name for s in skills[:display_count])}"
-            )
+                print(f"  ...还有 {len(skills) - 5} 个 skill，使用 SKILLS scan 查看完整列表")
+            print(f"以下 skills 可能有新版本: {', '.join(s.name for s in skills[:display_count])}")
             if len(skills) > 5:
-                print(
-                    f"...还有 {len(skills) - 5} 个 skill，使用 SKILLS scan 查看完整列表"
-                )
+                print(f"...还有 {len(skills) - 5} 个 skill，使用 SKILLS scan 查看完整列表")
             print()
         except Exception as e:
             print(f"更新失败: {e}", file=sys.stderr)
@@ -759,9 +742,7 @@ def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str,
     def scan_skills_dir(path: Path) -> list[str]:
         if not path.exists():
             return []
-        return [
-            d.name for d in path.iterdir() if d.is_dir() and not d.name.startswith(".")
-        ]
+        return [d.name for d in path.iterdir() if d.is_dir() and not d.name.startswith(".")]
 
     from pathlib import Path as PathlibPath
 
@@ -832,7 +813,7 @@ def find_skills_project_root() -> Path:
         return install_origin
 
     # 回退到代码所在目录（向后兼容）
-    return Path(__file__).parent.parent.resolve()
+    return Path(__file__).parent.resolve()
 
 
 def find_project_root_from_install_origin() -> Path | None:
@@ -877,7 +858,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.reconfigure(encoding="utf-8")
 
     project_root = find_skills_project_root()
-    settings = load_settings(project_root / "settings.yaml")
+    settings = load_settings(project_root / "setting.yaml")
     paths = get_effective_paths(settings, project_root)
 
     # 设置日志

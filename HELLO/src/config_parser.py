@@ -96,10 +96,10 @@ def summarize_claude_settings(parsed: Any) -> dict[str, Any]:
 
     # 提取环境变量键名
     if isinstance(env, dict):
-        summary["env_keys"] = sorted(str(k) for k in env.keys())
+        summary["env_keys"] = sorted(str(k) for k in env)
         summary["anthropic_route_env_keys"] = sorted(
             str(k)
-            for k in env.keys()
+            for k in env
             if str(k).startswith("ANTHROPIC_") or str(k).startswith("CLAUDE_CODE_")
         )
 
@@ -162,13 +162,9 @@ def summarize_codex_config(parsed: Any) -> dict[str, Any]:
                         cfg.get("experimental_bearer_token")
                     )
                 if isinstance(cfg.get("http_headers"), dict):
-                    item["http_header_keys"] = sorted(
-                        str(k) for k in cfg["http_headers"].keys()
-                    )
+                    item["http_header_keys"] = sorted(str(k) for k in cfg["http_headers"])
                 if isinstance(cfg.get("env_http_headers"), dict):
-                    item["env_http_header_keys"] = sorted(
-                        str(k) for k in cfg["env_http_headers"].keys()
-                    )
+                    item["env_http_header_keys"] = sorted(str(k) for k in cfg["env_http_headers"])
             provider_summaries.append(item)
 
         summary["model_providers"] = provider_summaries
@@ -216,7 +212,7 @@ def config_summary(kind: str, path: Path) -> dict[str, Any]:
 
     # 提取顶层键名
     if isinstance(parsed, dict):
-        info["top_level_keys"] = sorted(str(k) for k in parsed.keys())
+        info["top_level_keys"] = sorted(str(k) for k in parsed)
 
     # 收集 header 源
     info["header_sources"] = collect_header_sources(parsed)

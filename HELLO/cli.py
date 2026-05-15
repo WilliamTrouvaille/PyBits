@@ -1,31 +1,21 @@
-#!/usr/bin/env -S uv run --script
-# requires-python = ">=3.12"
-# dependencies = ["loguru", "rich"]
-
 """HELLO CLI 入口点"""
 
 from __future__ import annotations
 
 import argparse
 import json
-import platform
 import sys
 import tempfile
 from pathlib import Path
 
 from loguru import logger
 
-from .lib import (
-    DEFAULT_PROMPT,
-    DEFAULT_TAIL_CHARS,
-    DEFAULT_TIMEOUT,
-    build_report,
-    expand_services,
-    setup_logger,
-    with_spinner,
-)
-
-from . import hello
+from .src import hello
+from .src.constants import DEFAULT_PROMPT, DEFAULT_TAIL_CHARS, DEFAULT_TIMEOUT
+from .src.logger import setup_logger
+from .src.probe_builder import expand_services
+from .src.report import build_report
+from .src.spinner import with_spinner
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -180,9 +170,7 @@ def main() -> int:
     show_spinner = (output_mode == "compact") and sys.stderr.isatty()
 
     # 创建临时工作目录
-    with tempfile.TemporaryDirectory(
-        prefix="hello-probe-", ignore_cleanup_errors=True
-    ) as td:
+    with tempfile.TemporaryDirectory(prefix="hello-probe-", ignore_cleanup_errors=True) as td:
         workdir = Path(td)
 
         # 执行探测（带或不带 spinner）

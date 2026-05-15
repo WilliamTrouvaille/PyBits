@@ -50,9 +50,7 @@ def register_github_repo(
         clone_github_repo(full_url, temp_path, proxy)
 
         # 提取 skills 到缓存目录
-        extracted_skills, conflicts = extract_skills_to_flat_structure(
-            temp_path, final_cache_path
-        )
+        extracted_skills, conflicts = extract_skills_to_flat_structure(temp_path, final_cache_path)
 
         if conflicts:
             # 清理已创建的缓存目录
@@ -150,10 +148,7 @@ def scan_repository(
         excluded_dirs: 排除的目录集合
     """
     # 确定扫描路径
-    if repo.type == RepositoryType.GITHUB:
-        scan_path = repo.local_path
-    else:
-        scan_path = repo.path
+    scan_path = repo.local_path if repo.type == RepositoryType.GITHUB else repo.path
 
     if not scan_path or not scan_path.exists():
         logger.warning(f"仓库路径不存在: {scan_path}")

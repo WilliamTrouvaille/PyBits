@@ -124,7 +124,7 @@ def normalize_claude_response(stdout: str) -> dict[str, Any]:
             if key in parsed:
                 response["metadata"][key] = redact(parsed[key], key)
 
-        response["parsed_top_level_keys"] = sorted(str(k) for k in parsed.keys())
+        response["parsed_top_level_keys"] = sorted(str(k) for k in parsed)
     else:
         # 纯文本响应
         text = stdout.strip()
@@ -133,9 +133,7 @@ def normalize_claude_response(stdout: str) -> dict[str, Any]:
 
     # 截断过长的文本
     if len(response["assistant_text"]) > 2000:
-        response["assistant_text"] = (
-            response["assistant_text"][:2000] + "...<truncated>"
-        )
+        response["assistant_text"] = response["assistant_text"][:2000] + "...<truncated>"
 
     return response
 
@@ -170,9 +168,7 @@ def normalize_codex_response(stdout: str, last_message_path: Path) -> dict[str, 
     assistant_text = ""
     if last_message_path.exists():
         try:
-            assistant_text = last_message_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).strip()
+            assistant_text = last_message_path.read_text(encoding="utf-8", errors="replace").strip()
         except Exception:
             assistant_text = ""
 

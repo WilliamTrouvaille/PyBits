@@ -114,7 +114,7 @@ def collect_header_sources(obj: Any, prefix: str = "") -> list[dict[str, Any]]:
                         {
                             "path": path,
                             "kind": "map",
-                            "keys": sorted(str(x) for x in v.keys()),
+                            "keys": sorted(str(x) for x in v),
                             "values_redacted": True,
                         }
                     )

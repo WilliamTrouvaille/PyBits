@@ -275,9 +275,7 @@ def extract_skills_to_flat_structure(
         # 清理 skill 名称
         sanitized_name = sanitize_skill_name(skill_name)
         if sanitized_name != skill_name:
-            logger.warning(
-                f"Skill 名称包含非法字符, 已清理: '{skill_name}' -> '{sanitized_name}'"
-            )
+            logger.warning(f"Skill 名称包含非法字符, 已清理: '{skill_name}' -> '{sanitized_name}'")
 
         # 复制到目标目录
         target_skill_dir = target_cache_dir / sanitized_name
@@ -316,7 +314,7 @@ def find_project_root(start_dir: Path) -> Path | None:
         ".codex",
     ]
 
-    for directory in [start_dir] + list(start_dir.parents):
+    for directory in [start_dir, *list(start_dir.parents)]:
         if any((directory / indicator).exists() for indicator in indicators):
             return directory
 
