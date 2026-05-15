@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 HELLO = "HELLO.cli:main"
 SKILLS = "SKILLS.src.cli:main"
+PTM = "PTM.cli:main"
 
 [tool.uv]
 package = true
@@ -29,5 +30,5 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["HELLO*", "SKILLS*"]
+include = ["HELLO*", "SKILLS*", "PTM*"]
 exclude = ["SKILLS._repos_cache*"]
