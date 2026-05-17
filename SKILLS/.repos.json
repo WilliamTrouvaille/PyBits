@@ -47,6 +47,22 @@
       "path": null,
       "local_path": null,
       "registered_at": "2026-05-10T14:17:09.885854"
+    },
+    {
+      "name": "vercel-labs/skills",
+      "type": "github",
+      "url": "https://github.com/vercel-labs/skills.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-05-16T13:39:16.059497"
+    },
+    {
+      "name": "mattpocock/skills",
+      "type": "github",
+      "url": "https://github.com/mattpocock/skills.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-05-17T12:56:22.035263"
     }
   ]
 }
