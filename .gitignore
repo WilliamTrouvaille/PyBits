@@ -6,9 +6,14 @@ build/
 SKILLS/logs/
 SKILLS/tests/
 SKILLS/_repos_cache
+SKILLS/setting.yaml
 
 ATP/.paper
 
 HELLO/logs/
 
 PTM/.env
+
+PTP/logs/
+PTP/tests/
+

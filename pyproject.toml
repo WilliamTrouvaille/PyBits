@@ -14,6 +14,7 @@ dependencies = [
     "rich>=13.0.0",
     "filelock>=3",
     "requests>=2.34.1",
+    "pymupdf>=1.27.2.3",
 ]
 
 
@@ -21,6 +22,7 @@ dependencies = [
 HELLO = "HELLO.cli:main"
 SKILLS = "SKILLS.cli:main"
 PTM = "PTM.cli:main"
+PTP = "PTP.cli:main"
 ATP = "ATP.cli:main"
 AIM = "AIM.cli:main"
 
@@ -33,5 +35,5 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["HELLO*", "SKILLS*", "PTM*", "ATP*", "AIM*", "_shared*"]
+include = ["HELLO*", "SKILLS*", "PTM*", "PTP*", "ATP*", "AIM*", "_shared*"]
 exclude = ["SKILLS._repos_cache*"]

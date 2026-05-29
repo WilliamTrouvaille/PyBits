@@ -10,6 +10,7 @@
 | `ATP` | 下载并转换 arXiv 论文 LaTeX 源码。 |
 | `HELLO` | 探测 Claude Code 和 Codex CLI 连通性。 |
 | `PTM` | 通过 MinerU API 将 PDF 转换为 Markdown。 |
+| `PTP` | 使用 PyMuPDF 将 PDF 页面渲染为 PNG 图片。 |
 | `SKILLS` | 管理 Claude Code / Codex skill 仓库、扫描、安装和更新。 |
 
 ## 安装刷新
@@ -26,6 +27,7 @@ uv tool install --force --reinstall --refresh .
 uv run HELLO --help
 uv run SKILLS --help
 uv run PTM --help
+uv run PTP --help
 uv run ATP --help
 uv run AIM --help
 ```
