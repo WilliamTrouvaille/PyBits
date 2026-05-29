@@ -14,14 +14,6 @@ class RepositoryType(Enum):
     LOCAL = "local"
 
 
-class AgentType(Enum):
-    """Agent 类型"""
-
-    CLAUDE = "claude"
-    CODEX = "codex"
-    ALL = "all"
-
-
 class ScopeType(Enum):
     """安装范围类型"""
 

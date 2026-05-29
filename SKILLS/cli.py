@@ -16,8 +16,13 @@ from rich.table import Table
 
 from _shared.utils.trash import soft_delete
 
+from .src.favorite import (
+    add_favorite,
+    list_favorites,
+    remove_favorite,
+)
 from .src.installer import install_skill
-from .src.models import AgentType, InstallMode, Repository, RepositoryType, ScopeType, Skill
+from .src.models import InstallMode, Repository, RepositoryType, ScopeType, Skill
 from .src.persistence import (
     add_repository,
     get_repository,
@@ -26,19 +31,34 @@ from .src.persistence import (
     repository_exists,
     update_repository,
 )
+from .src.recent import load_recent, record_recent
 from .src.repository import (
+    is_github_skill_url,
     parse_github_url,
     register_github_repo,
     register_github_skills,
     register_local_repo,
     scan_repository,
 )
-from .src.settings import Settings, get_effective_paths, load_settings
-from .src.utils import setup_logger
+from .src.utils import (
+    Settings,
+    default_agents,
+    get_effective_paths,
+    load_settings,
+    setup_logger,
+)
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Build the CLI argument parser."""
+def build_parser(agent_names: list[str] | None = None) -> argparse.ArgumentParser:
+    """Build the CLI argument parser.
+
+    Args:
+        agent_names: Agent 名列表（来自 setting.yaml 的 agents 键），用于动态生成
+            ``--agent`` 的可选值。为 None 时回退到默认 agent 配置。
+    """
+    if agent_names is None:
+        agent_names = list(default_agents())
+    agent_choices = [*agent_names, "all"]
     parser = argparse.ArgumentParser(
         prog="SKILLS",
         description="Sync local or GitHub skills repositories into agent skills directories.",
@@ -49,9 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser = subparsers.add_parser(
         "register",
         aliases=["rg"],
-        help="Register a GitHub repository or local skills directory.",
+        help="Register a GitHub repo, a GitHub skill URL, or a local skills directory.",
     )
-    register_parser.add_argument("source", help="GitHub URL/owner-repo shorthand or local path.")
+    register_parser.add_argument(
+        "source", help="GitHub repo URL/shorthand, GitHub skill URL, or local path."
+    )
     register_parser.add_argument("--name", help="Repository name for local registrations.")
     register_parser.add_argument(
         "--proxy", help="HTTP(S) proxy used when cloning GitHub repositories."
@@ -70,28 +92,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--local", action="store_true", help="Treat source as local directory."
     )
     register_parser.set_defaults(func=handle_register)
-
-    # rg-skill 命令（添加别名 rgs）
-    rg_skill_parser = subparsers.add_parser(
-        "rg-skill",
-        aliases=["rgs"],
-        help="Register selected skills from one or more GitHub skill URLs.",
-    )
-    rg_skill_parser.add_argument("urls", nargs="+", help="GitHub skill folder or SKILL.md URL.")
-    rg_skill_parser.add_argument(
-        "--name",
-        help="Repository name. Default: owner/repo:skill for one URL, timestamped name for many.",
-    )
-    rg_skill_parser.add_argument(
-        "--proxy", help="HTTP(S) proxy used when downloading GitHub contents."
-    )
-    rg_skill_parser.add_argument(
-        "--depth",
-        type=int,
-        default=3,
-        help="Maximum scan depth for recursive skill discovery (default: 3).",
-    )
-    rg_skill_parser.set_defaults(func=handle_register_github_skills)
 
     # ls 命令（已有别名 list）
     list_parser = subparsers.add_parser(
@@ -129,8 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument("skills", nargs="*", help="Skill names to install.")
     install_parser.add_argument(
         "--agent",
-        choices=[agent.value for agent in AgentType],
-        default=AgentType.ALL.value,
+        choices=agent_choices,
+        default="all",
         help="Target agent. Default: all.",
     )
     install_parser.add_argument(
@@ -202,6 +202,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status_parser.set_defaults(func=handle_status)
 
+    # recent 命令
+    recent_parser = subparsers.add_parser("recent", help="Show recently installed skills.")
+    recent_parser.set_defaults(func=handle_recent)
+
+    # favorite 命令组（别名 fav）
+    favorite_parser = subparsers.add_parser(
+        "favorite",
+        aliases=["fav"],
+        help="Manage favorite (常用) skills.",
+    )
+    favorite_sub = favorite_parser.add_subparsers(dest="favorite_command", metavar="action")
+
+    fav_list = favorite_sub.add_parser("list", help="List favorite skills.")
+    fav_list.set_defaults(func=handle_favorite_list)
+
+    fav_add = favorite_sub.add_parser("add", help="Copy skills from a repo into favorite.")
+    fav_add.add_argument("repository", help="Registered repository name.")
+    fav_add.add_argument("skills", nargs="+", help="Skill names to add.")
+    fav_add.set_defaults(func=handle_favorite_add)
+
+    fav_remove = favorite_sub.add_parser("remove", help="Soft-delete a favorite skill.")
+    fav_remove.add_argument("skill", help="Favorite skill name to remove.")
+    fav_remove.set_defaults(func=handle_favorite_remove)
+
+    favorite_parser.set_defaults(func=handle_favorite_default)
+
     return parser
 
 
@@ -222,7 +248,11 @@ def handle_register(args: argparse.Namespace, settings: Settings, paths: dict[st
         print(f"已注册仓库: {repo.name} ({repo.type.value})")
         return 0
 
-    # GitHub 仓库
+    # GitHub skill URL（tree/blob 子路径或 raw 文件）→ 精选 skills
+    if is_github_skill_url(source):
+        return register_skill_url(args, settings, paths)
+
+    # GitHub 完整仓库
     owner, repo_short_name = parse_github_url(source)
     repo_name = f"{owner}/{repo_short_name}"
 
@@ -283,12 +313,12 @@ def handle_register(args: argparse.Namespace, settings: Settings, paths: dict[st
     return 0
 
 
-def handle_register_github_skills(
-    args: argparse.Namespace, settings: Settings, paths: dict[str, Path]
-) -> int:
-    """Register one or more GitHub skill URLs as a selected repository."""
+def register_skill_url(args: argparse.Namespace, settings: Settings, paths: dict[str, Path]) -> int:
+    """Register a single GitHub skill URL as a selected (github_skills) repository."""
     try:
-        repo = register_github_skills(args.urls, args.name, args.proxy, paths["repos_cache_dir"])
+        repo = register_github_skills(
+            [args.source], args.name, args.proxy, paths["repos_cache_dir"]
+        )
     except ValueError as e:
         print(f"错误: {e}", file=sys.stderr)
         return 1
@@ -477,7 +507,7 @@ def handle_install(args: argparse.Namespace, settings: Settings, paths: dict[str
                 print(f"  {skill_name}", file=sys.stderr)
         return 1
 
-    agent = AgentType(args.agent)
+    agent = args.agent
     scope = ScopeType(args.scope)
     mode = InstallMode(args.mode)
     project_dir = args.project_dir or Path.cwd()
@@ -485,11 +515,14 @@ def handle_install(args: argparse.Namespace, settings: Settings, paths: dict[str
     skill_names_str = ", ".join(args.skills)
     logger.info(
         f"[用户操作] 安装 skills: {skill_names_str} "
-        f"(agent={agent.value}, scope={scope.value}, mode={mode.value}, project_dir={project_dir})"
+        f"(agent={agent}, scope={scope.value}, mode={mode.value}, project_dir={project_dir})"
     )
 
     for skill_name in args.skills:
-        install_skill(available_skills[skill_name], agent, scope, mode, args.force, project_dir)
+        install_skill(
+            available_skills[skill_name], agent, scope, mode, settings, args.force, project_dir
+        )
+        record_recent(skill_name, paths["recent_installs_path"])
 
     return 0
 
@@ -501,18 +534,35 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
         print("未找到已注册仓库，请先使用 `SKILLS register` 注册仓库。")
         return 1
 
+    recent_names = load_recent(paths["recent_installs_path"])
+    recent_label = "[最近安装]"
+
     repo_labels = [f"{repo.name} ({repo.type.value})" for repo in repos]
-    selected_repo_label = questionary.select("选择要安装的仓库:", choices=repo_labels).ask()
+    choices = ([recent_label] if recent_names else []) + repo_labels
+    selected_repo_label = questionary.select("选择要安装的仓库:", choices=choices).ask()
     if not selected_repo_label:
         logger.info("[用户操作] 取消安装 (未选择仓库)")
         print("安装已取消。")
         return 1
 
-    repo = repos[repo_labels.index(selected_repo_label)]
-    skills = scan_repository(repo, settings.default_scan_depth, settings.excluded_dirs)
-    if not skills:
-        print(f"仓库 {repo.name} 中未找到任何合法 skill。")
-        return 1
+    if selected_repo_label == recent_label:
+        # 从所有仓库中按最近安装的名字汇总 skills
+        all_skills: dict[str, Skill] = {}
+        for r in repos:
+            for skill in scan_repository(r, settings.default_scan_depth, settings.excluded_dirs):
+                all_skills.setdefault(skill.name, skill)
+        skills = [all_skills[name] for name in recent_names if name in all_skills]
+        repo_display = recent_label
+        if not skills:
+            print("最近安装的 skills 在当前已注册仓库中均未找到。")
+            return 1
+    else:
+        repo = repos[repo_labels.index(selected_repo_label)]
+        repo_display = repo.name
+        skills = scan_repository(repo, settings.default_scan_depth, settings.excluded_dirs)
+        if not skills:
+            print(f"仓库 {repo.name} 中未找到任何合法 skill。")
+            return 1
 
     skill_labels = [format_skill_label(skill) for skill in skills]
     selected_skill_labels = questionary.checkbox(
@@ -527,8 +577,8 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
 
     agent_value = questionary.select(
         "选择目标 agent:",
-        choices=[agent.value for agent in AgentType],
-        default=AgentType.ALL.value,
+        choices=[*settings.agents, "all"],
+        default="all",
     ).ask()
     scope_value = questionary.select(
         "选择安装范围:",
@@ -556,7 +606,7 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
 
     print()
     print("安装参数:")
-    print(f"  仓库: {repo.name}")
+    print(f"  仓库: {repo_display}")
     print(f"  Skills: {skill_names_str}")
     print(f"  Agent: {agent_value}")
     print(f"  Scope: {scope_value}")
@@ -570,10 +620,12 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
     for skill in selected_skills:
         install_skill(
             skill,
-            AgentType(agent_value),
+            agent_value,
             ScopeType(scope_value),
             InstallMode(mode_value),
+            settings,
         )
+        record_recent(skill.name, paths["recent_installs_path"])
 
     return 0
 
@@ -821,6 +873,72 @@ def rebuild_remote_repository(
     raise ValueError(f"仓库不是可重建的远程仓库: {repo.name}")
 
 
+def handle_recent(args: argparse.Namespace, settings: Settings, paths: dict[str, Path]) -> int:
+    """Show recently installed skills."""
+    skills = load_recent(paths["recent_installs_path"])
+    if not skills:
+        print("暂无最近安装记录。")
+        return 0
+    print(f"最近安装的 skills（最新在前，共 {len(skills)} 个）:")
+    for name in skills:
+        print(f"  {name}")
+    return 0
+
+
+def handle_favorite_default(
+    args: argparse.Namespace, settings: Settings, paths: dict[str, Path]
+) -> int:
+    """`SKILLS favorite` 无子命令时默认列出。"""
+    return handle_favorite_list(args, settings, paths)
+
+
+def handle_favorite_list(
+    args: argparse.Namespace, settings: Settings, paths: dict[str, Path]
+) -> int:
+    """List favorite skills."""
+    skills = list_favorites(paths["repos_cache_dir"])
+    if not skills:
+        print("常用 skills 为空。使用 `SKILLS favorite add <repo> <skill>` 添加。")
+        return 0
+    print(f"常用 skills（共 {len(skills)} 个）:")
+    for name in skills:
+        print(f"  {name}")
+    return 0
+
+
+def handle_favorite_add(
+    args: argparse.Namespace, settings: Settings, paths: dict[str, Path]
+) -> int:
+    """Copy skills from a registered repo into favorite."""
+    try:
+        added = add_favorite(
+            args.repository,
+            args.skills,
+            paths["repos_cache_dir"],
+            paths["repos_json_path"],
+            paths["repos_local_json_path"],
+            settings.excluded_dirs,
+            settings.default_scan_depth,
+        )
+    except ValueError as e:
+        print(f"错误: {e}", file=sys.stderr)
+        return 1
+
+    print(f"已添加 {len(added)} 个常用 skill: {', '.join(added)}")
+    return 0
+
+
+def handle_favorite_remove(
+    args: argparse.Namespace, settings: Settings, paths: dict[str, Path]
+) -> int:
+    """Soft-delete a favorite skill."""
+    if remove_favorite(args.skill, paths["repos_cache_dir"]):
+        print(f"已移除常用 skill: {args.skill}")
+        return 0
+    print(f"常用 skills 中不存在: {args.skill}", file=sys.stderr)
+    return 1
+
+
 def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str, Path]) -> int:
     """Show registered repositories and installed skills."""
     repos = load_repositories(paths["repos_json_path"], paths["repos_local_json_path"])
@@ -831,54 +949,47 @@ def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str,
 
     print("\n已安装 skills:")
 
-    # 扫描各个 skills 目录
     def scan_skills_dir(path: Path) -> list[str]:
         if not path.exists():
             return []
         return [d.name for d in path.iterdir() if d.is_dir() and not d.name.startswith(".")]
 
-    from pathlib import Path as PathlibPath
+    def print_skill_list(skills: list[str]) -> None:
+        if skills:
+            for skill in skills:
+                print(f"    {skill}")
+        else:
+            print("    无")
 
-    # User-level paths
-    claude_user_skills_dir = PathlibPath.home() / ".claude" / "skills"
-    codex_user_skills_dir = PathlibPath.home() / ".agents" / "skills"
+    # 用户级：遍历配置中的每个 agent 的 user 目录
+    print("  用户级:")
+    for agent, mapping in settings.agents.items():
+        user_dir = mapping.get("user")
+        if not user_dir:
+            continue
+        print(f"\n  ({agent}) {user_dir}:")
+        print_skill_list(scan_skills_dir(Path(user_dir).expanduser()))
 
-    # Project-level paths (use current working directory)
-    claude_project_skills_dir = PathlibPath.cwd() / ".claude" / "skills"
-    codex_project_skills_dir = PathlibPath.cwd() / ".agents" / "skills"
-
-    claude_user_skills = scan_skills_dir(claude_user_skills_dir)
-    claude_project_skills = scan_skills_dir(claude_project_skills_dir)
-    codex_user_skills = scan_skills_dir(codex_user_skills_dir)
-    codex_project_skills = scan_skills_dir(codex_project_skills_dir)
-
-    print("  用户级 (claude):")
-    if claude_user_skills:
-        for skill in claude_user_skills:
-            print(f"    {skill}")
-    else:
-        print("    无")
-
-    print("\n  用户级 (codex):")
-    if codex_user_skills:
-        for skill in codex_user_skills:
-            print(f"    {skill}")
-    else:
-        print("    无")
-
-    print("\n  项目级 (claude):")
-    if claude_project_skills:
-        for skill in claude_project_skills:
-            print(f"    {skill}")
-    else:
-        print("    无")
-
-    print("\n  项目级 (codex):")
-    if codex_project_skills:
-        for skill in codex_project_skills:
-            print(f"    {skill}")
-    else:
-        print("    无")
+    # 项目级：cwd 与配置的 workspaces，扫描每个 agent 的 project 目录（只读）
+    project_roots = [Path.cwd(), *(Path(ws).expanduser() for ws in settings.workspaces)]
+    seen_roots: set[Path] = set()
+    for project_root in project_roots:
+        resolved = project_root.resolve()
+        if resolved in seen_roots:
+            continue
+        seen_roots.add(resolved)
+        print(f"\n  项目级 ({project_root}):")
+        for agent, mapping in settings.agents.items():
+            project_subdir = mapping.get("project")
+            if not project_subdir:
+                continue
+            print(f"    ({agent}) {project_subdir}:")
+            skills = scan_skills_dir(project_root / project_subdir)
+            if skills:
+                for skill in skills:
+                    print(f"      {skill}")
+            else:
+                print("      无")
 
     return 0
 
@@ -958,7 +1069,7 @@ def main(argv: list[str] | None = None) -> int:
     setup_logger(paths["logs_dir"], settings.log_retention_days, settings.log_level)
 
     # 解析参数
-    parser = build_parser()
+    parser = build_parser(list(settings.agents))
     args = parser.parse_args(argv)
 
     if not hasattr(args, "func"):

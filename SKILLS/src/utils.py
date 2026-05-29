@@ -4,52 +4,143 @@ from __future__ import annotations
 
 import re
 import shutil
-import sys
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
+import yaml
 from loguru import logger
 
+from _shared.utils.logging import setup_tool_logger
 from _shared.utils.trash import soft_delete
+
+
+def default_excluded_dirs() -> set[str]:
+    """扫描时默认排除的目录（setting.yaml 缺失时的回退值）。"""
+    return {
+        ".git",
+        ".github",
+        ".gitlab",
+        "docs",
+        "doc",
+        "documentation",
+        "tests",
+        "test",
+        "__tests__",
+        "examples",
+        "example",
+        "demos",
+        "demo",
+        ".vscode",
+        ".idea",
+        ".vs",
+        "scripts",
+        "tools",
+        "utils",
+    }
+
+
+def default_agents() -> dict[str, dict[str, str]]:
+    """agent 安装目录默认配置（setting.yaml 缺失时的回退值）。"""
+    return {
+        "claude": {"user": "~/.claude/skills", "project": ".claude/skills"},
+        "codex": {"user": "~/.agents/skills", "project": ".agents/skills"},
+    }
+
+
+@dataclass
+class Settings:
+    """SKILLS 配置"""
+
+    log_level: str = "INFO"
+    log_retention_days: int = 30
+    default_scan_depth: int = 3
+    excluded_dirs: set[str] = field(default_factory=default_excluded_dirs)
+    repos_cache_dir: Path | None = None
+    logs_dir: Path | None = None
+    agents: dict[str, dict[str, str]] = field(default_factory=default_agents)
+    workspaces: list[str] = field(default_factory=list)
+
+
+def load_settings(config_path: Path | None = None) -> Settings:
+    """从 YAML 文件加载配置，文件缺失时返回内置默认值。"""
+    if config_path is None:
+        project_root = Path(__file__).parent.parent.resolve()
+        config_path = project_root / "setting.yaml"
+
+    if not config_path.exists():
+        return Settings()
+
+    with open(config_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    if not data:
+        return Settings()
+
+    settings = Settings()
+
+    if "log_level" in data:
+        settings.log_level = str(data["log_level"])
+
+    if "log_retention_days" in data:
+        settings.log_retention_days = int(data["log_retention_days"])
+
+    if "default_scan_depth" in data:
+        settings.default_scan_depth = int(data["default_scan_depth"])
+
+    if "excluded_dirs" in data and isinstance(data["excluded_dirs"], list):
+        settings.excluded_dirs = set(data["excluded_dirs"])
+
+    if data.get("repos_cache_dir"):
+        settings.repos_cache_dir = Path(data["repos_cache_dir"])
+
+    if data.get("logs_dir"):
+        settings.logs_dir = Path(data["logs_dir"])
+
+    if isinstance(data.get("agents"), dict):
+        settings.agents = {
+            str(agent): {str(scope): str(path) for scope, path in mapping.items()}
+            for agent, mapping in data["agents"].items()
+            if isinstance(mapping, dict)
+        }
+
+    if isinstance(data.get("workspaces"), list):
+        settings.workspaces = [str(item) for item in data["workspaces"]]
+
+    return settings
+
+
+def get_effective_paths(settings: Settings, project_root: Path) -> dict[str, Path]:
+    """合并配置值和运行时派生路径。"""
+    return {
+        "repos_cache_dir": settings.repos_cache_dir or project_root / "_repos_cache",
+        "logs_dir": settings.logs_dir or project_root / "logs",
+        "repos_json_path": project_root / ".repos.json",
+        "repos_local_json_path": project_root / ".repos.local.json",
+        "recent_installs_path": project_root / ".recent_installs.json",
+    }
 
 
 def setup_logger(
     logs_dir: Path | None = None, log_retention_days: int = 30, log_level: str = "INFO"
 ) -> None:
-    """
-    初始化 loguru 日志
+    """初始化日志，委托给共享的 _shared.utils.logging。
+
+    控制台输出 WARNING 及以上；文件输出 DEBUG 及以上（由共享实现固定），
+    因此 log_level 主要保留为向后兼容参数。
 
     Args:
         logs_dir: 日志目录路径
         log_retention_days: 日志保留天数
-        log_level: 日志级别
+        log_level: 兼容参数（共享实现以 DEBUG 写文件、WARNING 写控制台）
     """
-    logger.remove()
-
-    # 控制台输出: WARNING 及以上
-    logger.add(
-        sys.stderr,
-        level="WARNING",
-        format="<level>{level: <8}</level> | <level>{message}</level>",
+    _ = log_level
+    setup_tool_logger(
+        "SKILLS",
+        logs_dir=logs_dir,
+        retention_days=log_retention_days,
+        console_level="WARNING",
     )
-
-    # 确保日志目录存在
-    logs_path = logs_dir or Path(__file__).parent.parent / "logs"
-    ensure_dir(logs_path)
-
-    # 文件输出: INFO 及以上, 按日期分割
-    log_file = logs_path / "skills_{time:YYYY-MM-DD}.log"
-    logger.add(
-        log_file,
-        level=log_level,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
-        rotation="00:00",
-        retention=f"{log_retention_days} days",
-        encoding="utf-8",
-    )
-
-    # 清理旧日志
-    clean_old_logs(logs_path, log_retention_days)
 
 
 def configure_git_proxy(proxy: str) -> dict[str, str]:
@@ -80,26 +171,6 @@ def normalize_repo_name(url_or_path: str) -> str:
 def ensure_dir(path: Path) -> None:
     """确保目录存在, 不存在则创建"""
     path.mkdir(parents=True, exist_ok=True)
-
-
-def clean_old_logs(logs_dir: Path, retention_days: int) -> None:
-    """清理超过保留期限的日志文件"""
-    if not logs_dir.exists():
-        return
-
-    cutoff_date = datetime.now() - timedelta(days=retention_days)
-
-    for log_file in logs_dir.glob("skills_*.log"):
-        try:
-            # 从文件名提取日期
-            date_str = log_file.stem.replace("skills_", "")
-            file_date = datetime.strptime(date_str, "%Y-%m-%d")
-
-            if file_date < cutoff_date:
-                moved_log = soft_delete(log_file, "skills-old-log")
-                logger.debug(f"旧日志已软删除: {log_file} -> {moved_log}")
-        except (ValueError, OSError) as e:
-            logger.warning(f"清理日志文件失败: {log_file}, 错误: {e}")
 
 
 def generate_timestamped_cache_dir_name(owner: str, repo: str) -> str:
@@ -137,27 +208,7 @@ def recursive_find_skills(
         包含 SKILL.md 的目录路径列表
     """
     if excluded_dirs is None:
-        excluded_dirs = {
-            ".git",
-            ".github",
-            ".gitlab",
-            "docs",
-            "doc",
-            "documentation",
-            "tests",
-            "test",
-            "__tests__",
-            "examples",
-            "example",
-            "demos",
-            "demo",
-            ".vscode",
-            ".idea",
-            ".vs",
-            "scripts",
-            "tools",
-            "utils",
-        }
+        excluded_dirs = default_excluded_dirs()
 
     skill_dirs = []
     visited_real_paths: set[Path] = set()

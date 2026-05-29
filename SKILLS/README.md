@@ -69,28 +69,30 @@ SKILLS rg /path/to/local/skills --local --name my-skills
 
 > **命令别名**：`register` 可简写为 `rg`
 
-**注册指定 GitHub skill URL**：
+**注册指定 GitHub skill（自动识别）**：
+
+`rg` 会自动判别 `source` 的类型，无需单独的子命令：
+
+- `owner/repo` 或仓库主页链接 → 克隆**完整仓库**
+- 带 `tree/` 或 `blob/` 子路径的链接、`raw.githubusercontent.com` 文件链接 → 只注册**该目录下的 skills**
+- 本地存在的路径（或带 `--local`）→ 注册**本地仓库**
 
 ```bash
 # 注册单个 skill 目录
-SKILLS rg-skill https://github.com/org/repo/tree/main/skills/foo
+SKILLS rg https://github.com/mattpocock/skills/tree/main/skills/engineering/grill-with-docs
 
 # 注册单个 SKILL.md 页面
-SKILLS rg-skill https://github.com/org/repo/blob/main/skills/foo/SKILL.md
-
-# 注册多个 URL 为一个精选仓库
-SKILLS rgs <url1> <url2> --name selected-skills
+SKILLS rg https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md
 ```
 
-`rg-skill` 会通过 GitHub Contents API 只下载指定目录，缓存为 `github_skills` 类型的精选仓库。注册后可继续使用：
+针对 skill 子路径的注册会通过 GitHub Contents API 只下载目标目录，缓存为 `github_skills`
+类型的精选仓库（缓存目录以 `_` 前缀标记非完整仓库）。注册后可继续使用：
 
 ```bash
-SKILLS scan selected-skills
-SKILLS install selected-skills foo --scope user --agent codex
-SKILLS update selected-skills
+SKILLS scan "mattpocock/skills:grill-with-docs"
+SKILLS install "mattpocock/skills:grill-with-docs" grill-with-docs --scope user --agent codex
+SKILLS update "mattpocock/skills:grill-with-docs"
 ```
-
-> **命令别名**：`rg-skill` 可简写为 `rgs`
 
 ### 列出已注册的仓库
 
@@ -149,7 +151,7 @@ SKILLS install
 交互式流程会引导你：
 1. 选择仓库
 2. 选择要安装的 skills（支持多选）
-3. 选择目标 agent（claude / codex / all）
+3. 选择目标 agent（来自 `setting.yaml` 的 agents 键，默认含 claude / codex / all）
 4. 选择安装范围（user / project）
 5. 选择安装模式（copy / link）
 6. 确认安装参数
@@ -192,6 +194,35 @@ SKILLS clean
 
 缓存清理、覆盖安装和注册失败后的缓存回收都会移动到 `.codex/_trash_bin_/`，不会直接硬删除。
 
+### 常用 skills（favorite）
+
+`favorite`（别名 `fav`）把常用 skill 收集到内置仓库 `_repos_cache/favorite/`，
+该仓库会作为一条 `local` 记录出现在 `SKILLS ls` 与交互式安装的仓库列表中。
+
+```bash
+# 列出常用 skills（直接 SKILLS favorite 也会列出）
+SKILLS favorite list
+
+# 从已注册仓库复制 skill 到常用集合
+SKILLS favorite add "mattpocock/skills:grill-with-docs" grill-with-docs
+
+# 软删除某个常用 skill（移动到 .codex/_trash_bin_/）
+SKILLS favorite remove grill-with-docs
+```
+
+`SKILLS clean` 不会清理 `favorite` 目录。
+
+### 最近安装（recent）
+
+每次安装成功后，被安装 skill 的名字会记录到 `.recent_installs.json`（去重，最新在前，最多 100 条）。
+
+```bash
+SKILLS recent
+```
+
+交互式安装（`SKILLS install`）的仓库选择列表顶部会出现 `[最近安装]` 快捷入口，
+可直接从最近安装过的 skills 中挑选。
+
 ## 配置文件
 
 配置文件位于 `SKILLS/setting.yaml`，可以自定义以下选项：
@@ -215,9 +246,34 @@ excluded_dirs:
 # 路径配置（设为 null 使用默认值）
 repos_cache_dir: null  # 默认: SKILLS/_repos_cache
 logs_dir: null         # 默认: SKILLS/logs
+
+# Agent 安装目录配置
+# 键名即 --agent 的取值；新增 agent（如 cursor）只需在此添加，无需改代码。
+agents:
+  claude:
+    user: "~/.claude/skills"
+    project: ".claude/skills"
+  codex:
+    user: "~/.agents/skills"
+    project: ".agents/skills"
+
+# 工作区列表，仅用于 SKILLS status 只读扫描各工作区的项目级 skills
+workspaces:
+  - "~/CODE"
 ```
 
 如果配置文件不存在，SKILLS 会使用内置默认值。
+
+### agents
+
+`agents` 决定 `--agent` 的可选值与各 agent 的安装目录。键名（如 `claude`、`codex`）
+即为 `--agent` 的取值，外加内置的 `all`（安装到所有已配置 agent）。要支持新的 agent
+（如 Cursor、DeepSeek），只需在此新增一段配置，无需改动代码。
+
+### workspaces
+
+`workspaces` 是一组工作区根目录，**仅供 `SKILLS status` 只读扫描**，列出每个工作区下
+各 agent 的项目级 skills（即 `agents.<agent>.project` 目录）。`status` 不会对工作区做任何写操作。
 
 ## 参数说明
 
@@ -228,10 +284,11 @@ logs_dir: null         # 默认: SKILLS/logs
 
 ### 安装参数
 
-- `--agent <claude|codex|all>`：指定目标 agent，默认 `all`
+- `--agent <name|all>`：指定目标 agent，默认 `all`。可选值来自 `setting.yaml` 的 `agents` 键
+  （内置 `claude`、`codex`），外加 `all`（安装到所有已配置 agent）。安装目录由该 agent 配置决定。
 - `--scope <user|project>`：指定安装范围，**必须指定**
-  - `user`：安装到用户级 skills 目录（`~/.claude/skills/` 或 `~/.agents/skills/`）
-  - `project`：安装到项目级 skills 目录（`.claude/skills/` 或 `.agents/skills/`）
+  - `user`：安装到用户级 skills 目录（由 `agents.<agent>.user` 决定）
+  - `project`：安装到项目级 skills 目录（由 `agents.<agent>.project` 决定）
 - `--mode <copy|link>`：指定安装模式，默认 `copy`
   - `copy`：复制 skill 目录
   - `link`：创建链接（Windows 使用 Junction，Mac/Linux 使用 symlink）
@@ -309,22 +366,20 @@ SKILLS 支持在多台电脑间同步配置：
 
 - `.repos.json`：必须同步
 - `.repos.local.json`：不应同步（加入 `.gitignore`）
+- `.recent_installs.json`：不应同步（本机最近安装记录）
 - `_repos_cache/`：不应同步（加入 `.gitignore`）
 - `logs/`：不应同步（加入 `.gitignore`）
-- `settings.yaml`：可选同步（根据个人偏好）
+- `setting.yaml`：可选同步（根据个人偏好）
 
 ## 日志
 
-日志文件位于 `SKILLS/logs/` 目录，按日期分割（`skills_YYYY-MM-DD.log`），保留最近 30 天。
+日志由共享的 `_shared/utils/logging` 统一管理，文件位于 `SKILLS/logs/` 目录，
+按日期分割（`skills_YYYY-MM-DD.log`），过期日志会软删除到 `.codex/_trash_bin_/`。
 
 - 控制台输出：WARNING 及以上级别
-- 文件输出：INFO 及以上级别
+- 文件输出：DEBUG 及以上级别
 
-可通过配置文件或环境变量 `SKILLS_LOG_LEVEL` 配置日志级别：
-
-```bash
-export SKILLS_LOG_LEVEL=DEBUG
-```
+日志保留天数可通过 `setting.yaml` 的 `log_retention_days` 配置。
 
 ## 开发
 

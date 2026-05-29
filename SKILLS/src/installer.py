@@ -13,15 +13,16 @@ from loguru import logger
 
 from _shared.utils.trash import soft_delete
 
-from .models import AgentType, InstallMode, ScopeType, Skill
-from .utils import ensure_dir, find_project_root
+from .models import InstallMode, ScopeType, Skill
+from .utils import Settings, ensure_dir, find_project_root
 
 
 def install_skill(
     skill: Skill,
-    agent: AgentType,
+    agent: str,
     scope: ScopeType,
     mode: InstallMode,
+    settings: Settings,
     force: bool = False,
     project_dir: Path | None = None,
 ) -> None:
@@ -33,18 +34,19 @@ def install_skill(
 
     Args:
         skill: Skill 对象
-        agent: 目标 agent
+        agent: 目标 agent 名（setting.yaml 的 agents 键，或 "all"）
         scope: 安装范围
         mode: 安装模式
+        settings: 配置对象，提供各 agent 的安装目录
         force: 是否强制覆盖
         project_dir: 项目目录（用于项目级安装）
     """
     # 确定目标 agent 列表
-    agents = [AgentType.CLAUDE, AgentType.CODEX] if agent == AgentType.ALL else [agent]
+    agents = list(settings.agents) if agent == "all" else [agent]
 
     # 对每个 agent 执行安装
     for target_agent in agents:
-        target_dir = get_target_dir(target_agent, scope, project_dir)
+        target_dir = get_target_dir(target_agent, scope, settings, project_dir)
         target_path = target_dir / skill.name
 
         # 检查是否已存在
@@ -84,37 +86,38 @@ def install_skill(
                     print(f"✗ 复制也失败: {copy_error}")
 
 
-def get_target_dir(agent: AgentType, scope: ScopeType, project_dir: Path | None = None) -> Path:
+def get_target_dir(
+    agent: str, scope: ScopeType, settings: Settings, project_dir: Path | None = None
+) -> Path:
     """
     获取目标 skills 目录
-    - 根据 agent 和 scope 确定路径
+    - 根据 agent 和 scope 从 settings.agents 解析路径
     - 如果目录不存在，自动创建
 
     Args:
-        agent: 目标 agent
+        agent: 目标 agent 名（setting.yaml 的 agents 键）
         scope: 安装范围
+        settings: 配置对象
         project_dir: 项目目录（用于项目级安装）
 
     Returns:
         目标 skills 目录路径
     """
-    # 用户级路径
+    agent_config = settings.agents.get(agent)
+    if not agent_config:
+        raise ValueError(f"不支持的 agent 类型: {agent}（请在 setting.yaml 的 agents 中配置）")
+
     if scope == ScopeType.USER:
-        if agent == AgentType.CLAUDE:
-            target_dir = Path.home() / ".claude" / "skills"
-        elif agent == AgentType.CODEX:
-            target_dir = Path.home() / ".agents" / "skills"
-        else:
-            raise ValueError(f"不支持的 agent 类型: {agent}")
+        configured = agent_config.get("user")
+        if not configured:
+            raise ValueError(f"agent '{agent}' 缺少 user 安装目录配置")
+        target_dir = Path(configured).expanduser()
     else:
-        # 项目级路径
+        configured = agent_config.get("project")
+        if not configured:
+            raise ValueError(f"agent '{agent}' 缺少 project 安装目录配置")
         project = project_dir or Path.cwd()
-        if agent == AgentType.CLAUDE:
-            target_dir = project / ".claude" / "skills"
-        elif agent == AgentType.CODEX:
-            target_dir = project / ".agents" / "skills"
-        else:
-            raise ValueError(f"不支持的 agent 类型: {agent}")
+        target_dir = project / configured
 
         # 检查是否是项目根目录
         if not find_project_root(project):

@@ -124,7 +124,9 @@ def register_github_skills(
     final_cache_path = cache_dir / f"_{cache_dir_name}"
 
     ensure_dir(cache_dir)
-    staging_path = create_staging_dir(cache_dir, f"{first_source.owner}_{first_source.repo}_selected")
+    staging_path = create_staging_dir(
+        cache_dir, f"{first_source.owner}_{first_source.repo}_selected"
+    )
     try:
         for index, source in enumerate(sources, 1):
             download_github_skill_source(
@@ -189,6 +191,21 @@ def create_staging_dir(cache_dir: Path, label: str) -> Path:
     staging_dir = cache_dir / f"_{safe_label}_{timestamp}_staging"
     ensure_dir(staging_dir)
     return staging_dir
+
+
+def is_github_skill_url(url: str) -> bool:
+    """判断 URL 是否指向 GitHub 仓库内的某个 skill 目录或 SKILL.md。
+
+    完整仓库 URL（github.com/owner/repo）和 owner/repo 简写都返回 False；
+    带 tree/blob 子路径的 URL 或 raw.githubusercontent.com 文件 URL 返回 True。
+    """
+    parsed = urlparse(url)
+    path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+
+    if parsed.netloc == "github.com" and len(path_parts) >= 5:
+        return path_parts[2] in ("tree", "blob")
+
+    return parsed.netloc == "raw.githubusercontent.com" and len(path_parts) >= 5
 
 
 def parse_github_skill_url(url: str) -> GitHubSkillSource:
