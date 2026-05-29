@@ -9,6 +9,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from _shared.utils.logging import setup_tool_logger
+
 from .src.api_client import MinerUAPIClient
 from .src.config import load_token, mask_token
 from .src.constants import (
@@ -20,6 +22,8 @@ from .src.constants import (
 from .src.file_handler import download_zip, extract_markdown
 from .src.models import PTMError
 from .src.pdf_validator import validate_pdf
+
+LOGS_DIR = Path(__file__).parent / "logs"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -90,13 +94,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def setup_logger(verbose: bool) -> None:
-    """Configure loguru to write logs to stderr."""
+    """Configure loguru to write logs to stderr and PTM/logs."""
 
-    logger.remove()
-    logger.add(
-        sys.stderr,
-        level="DEBUG" if verbose else "INFO",
-        format="{time:HH:mm:ss} | {level} | {message}",
+    setup_tool_logger(
+        "ptm",
+        logs_dir=LOGS_DIR,
+        verbose=verbose,
+        retention_days=30,
+        console_level="DEBUG" if verbose else "INFO",
     )
 
 

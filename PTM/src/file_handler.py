@@ -20,6 +20,8 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
+from _shared.utils.trash import soft_delete
+
 from .constants import MAX_UNZIPPED_SIZE_BYTES, REQUEST_TIMEOUT_SECONDS
 from .models import PTMError
 
@@ -123,7 +125,8 @@ def extract_markdown(
 
     if not keep_zip:
         try:
-            zip_path.unlink()
+            moved_zip = soft_delete(zip_path, "ptm-temp-zip")
+            logger.debug(f"临时 zip 已软删除: {zip_path} -> {moved_zip}")
         except OSError as exc:
             logger.warning(f"无法删除临时 zip 文件，请手动处理: {zip_path} ({exc})")
 
