@@ -30,6 +30,7 @@
 5. **未经用户授权，不直接修改 `AGENTS.md`、`.codex/settings.json`、项目核心配置文件**。
 6. **未经用户明确要求，不得主动压缩、截断或省略输出内容**。
 7. **新工具开发时，优先走需求对齐流程，主动完整列出建议引入的第三方库**。
+8. 搜索网页内容（包括技术文档、配置项等）时优先使用[$smart-search-cli](/Users/trouva/.agents/skills/smart-search-cli/SKILL.md)。
 
 # 全局命令开发流程
 
@@ -62,7 +63,7 @@ Codex 不应擅自扩展为：
 - 用户点名的文件或目录
 - `README`、项目文档、配置文件、测试文件
 - `.codex/plans/` 与 `.codex/logs/`
-- 相关外部资料或社区参考（如用户提供链接，或任务需要当前信息）
+- 相关外部资料或社区参考（如用户提供链接，或任务需要当前信息），优先使用[$smart-search-cli](/Users/trouva/.agents/skills/smart-search-cli/SKILL.md)进行搜索
 
 ## 规划
 
