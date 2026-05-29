@@ -952,7 +952,7 @@ def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str,
     def scan_skills_dir(path: Path) -> list[str]:
         if not path.exists():
             return []
-        return [d.name for d in path.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        return sorted(d.name for d in path.iterdir() if d.is_dir() and not d.name.startswith("."))
 
     def print_skill_list(skills: list[str]) -> None:
         if skills:
@@ -970,14 +970,9 @@ def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str,
         print(f"\n  ({agent}) {user_dir}:")
         print_skill_list(scan_skills_dir(Path(user_dir).expanduser()))
 
-    # 项目级：cwd 与配置的 workspaces，扫描每个 agent 的 project 目录（只读）
-    project_roots = [Path.cwd(), *(Path(ws).expanduser() for ws in settings.workspaces)]
-    seen_roots: set[Path] = set()
+    # 项目级：在 workspaces 内先发现项目根，再按项目根分组展示。
+    project_roots = discover_workspace_project_roots(settings)
     for project_root in project_roots:
-        resolved = project_root.resolve()
-        if resolved in seen_roots:
-            continue
-        seen_roots.add(resolved)
         print(f"\n  项目级 ({project_root}):")
         for agent, mapping in settings.agents.items():
             project_subdir = mapping.get("project")
@@ -992,6 +987,99 @@ def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str,
                 print("      无")
 
     return 0
+
+
+def discover_workspace_project_roots(settings: Settings) -> list[Path]:
+    """Discover project roots under configured workspaces for status output."""
+    project_markers = project_marker_names(settings)
+    if not project_markers:
+        return []
+
+    discovered: dict[Path, Path] = {}
+    home_root = Path.home().resolve()
+    for workspace in settings.workspaces:
+        workspace_root = Path(workspace).expanduser()
+        for project_root in scan_workspace_project_roots(
+            workspace_root,
+            project_markers,
+            settings.default_scan_depth,
+            settings.excluded_dirs,
+        ):
+            resolved = project_root.resolve()
+            if resolved == home_root or not project_root_has_installed_skills(
+                project_root, settings
+            ):
+                continue
+            discovered.setdefault(resolved, project_root)
+
+    return [discovered[key] for key in sorted(discovered)]
+
+
+def project_marker_names(settings: Settings) -> set[str]:
+    """Return first path segments of configured project skill directories."""
+    markers: set[str] = set()
+    for mapping in settings.agents.values():
+        project_subdir = mapping.get("project")
+        if not project_subdir:
+            continue
+        parts = Path(project_subdir).parts
+        if parts:
+            markers.add(parts[0])
+    return markers
+
+
+def project_root_has_installed_skills(project_root: Path, settings: Settings) -> bool:
+    """Return whether any configured project skill directory contains skills."""
+    for mapping in settings.agents.values():
+        project_subdir = mapping.get("project")
+        if project_subdir and has_visible_skill_dir(project_root / project_subdir):
+            return True
+    return False
+
+
+def has_visible_skill_dir(path: Path) -> bool:
+    """Return whether path contains at least one non-hidden directory."""
+    if not path.is_dir():
+        return False
+    try:
+        return any(child.is_dir() and not child.name.startswith(".") for child in path.iterdir())
+    except OSError as exc:
+        logger.warning(f"无法读取 skills 目录: {path} ({exc})")
+        return False
+
+
+def scan_workspace_project_roots(
+    workspace_root: Path,
+    project_markers: set[str],
+    max_depth: int,
+    excluded_dirs: set[str],
+) -> list[Path]:
+    """Scan a workspace for project marker dirs and return their parent roots."""
+    if max_depth < 1 or not workspace_root.is_dir():
+        return []
+
+    roots: dict[Path, Path] = {}
+
+    def visit(directory: Path, depth: int) -> None:
+        try:
+            children = sorted(directory.iterdir(), key=lambda path: path.name)
+        except OSError as exc:
+            logger.warning(f"无法扫描工作区目录: {directory} ({exc})")
+            return
+
+        for child in children:
+            if not child.is_dir() or child.is_symlink():
+                continue
+            if child.name in excluded_dirs:
+                continue
+            if child.name in project_markers:
+                roots.setdefault(child.parent.resolve(), child.parent)
+                continue
+            if depth < max_depth:
+                visit(child, depth + 1)
+
+    visit(workspace_root, 0)
+    return [roots[key] for key in sorted(roots)]
 
 
 def find_skills_project_root() -> Path:
