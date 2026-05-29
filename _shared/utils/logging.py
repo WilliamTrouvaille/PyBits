@@ -58,14 +58,13 @@ def _normalize_tool_name(tool_name: str) -> str:
 
 def _candidate_logs_dirs(tool_name: str, logs_dir: Path | str | None) -> list[Path]:
     candidates: list[Path] = []
-    if logs_dir:
-        candidates.append(Path(logs_dir))
 
     origin_dir = _install_origin()
     if origin_dir:
         candidates.append(origin_dir / tool_name.strip().upper() / "logs")
 
-    candidates.append(Path.cwd() / ".pybits" / "logs" / _normalize_tool_name(tool_name))
+    if logs_dir:
+        candidates.append(Path(logs_dir))
 
     unique_candidates: list[Path] = []
     seen: set[Path] = set()
