@@ -18,14 +18,13 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import NoReturn
 
 from loguru import logger
 from rich.console import Console
 
-from _shared.utils.trash import soft_delete
+from _shared.utils.logging import setup_tool_logger
 
 console = Console()
 console_err = Console(stderr=True)
@@ -338,37 +337,12 @@ def setup_logger(log_dir: Path, json_mode: bool = False) -> None:
         log_dir: 日志目录
         json_mode: 是否为 JSON 模式（日志输出到 stderr）
     """
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    # 清理过期日志（保留 30 天）
-    cutoff = datetime.now() - timedelta(days=30)
-    for log_file in log_dir.glob("*.log"):
-        try:
-            if datetime.fromtimestamp(log_file.stat().st_mtime) < cutoff:
-                moved_log = soft_delete(log_file, "atp-old-log")
-                logger.debug(f"过期日志已软删除: {log_file} -> {moved_log}")
-        except OSError as exc:
-            logger.warning(f"清理过期日志失败: {log_file} ({exc})")
-
-    # 移除默认 handler
-    logger.remove()
-
-    # 配置文件日志
-    log_file = log_dir / f"{datetime.now().strftime('%Y-%m-%d')}.log"
-    logger.add(
-        log_file,
-        format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {message}",
-        level="DEBUG",
-        encoding="utf-8",
+    setup_tool_logger(
+        "atp",
+        logs_dir=log_dir,
+        retention_days=30,
+        console_level="INFO" if json_mode else "WARNING",
     )
-
-    # 配置控制台日志（JSON 模式下输出到 stderr）
-    if json_mode:
-        logger.add(
-            sys.stderr,
-            format="{time:YYYY-MM-DD HH:mm:ss} [{level}] {message}",
-            level="INFO",
-        )
 
 
 def build_parser() -> argparse.ArgumentParser:
