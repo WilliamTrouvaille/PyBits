@@ -10,6 +10,7 @@ class RepositoryType(Enum):
     """仓库类型"""
 
     GITHUB = "github"
+    GITHUB_SKILLS = "github_skills"
     LOCAL = "local"
 
 
@@ -45,6 +46,7 @@ class Repository:
     path: Path | None
     local_path: Path | None
     registered_at: datetime
+    sources: list[str] | None = None
 
     def to_dict(self) -> dict:
         """
@@ -58,6 +60,7 @@ class Repository:
             "path": None,
             "local_path": None,
             "registered_at": self.registered_at.isoformat(),
+            "sources": self.sources,
         }
 
     @classmethod
@@ -70,6 +73,7 @@ class Repository:
             path=Path(data["path"]) if data.get("path") else None,
             local_path=Path(data["local_path"]) if data.get("local_path") else None,
             registered_at=datetime.fromisoformat(data["registered_at"]),
+            sources=data.get("sources"),
         )
 
 

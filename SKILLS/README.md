@@ -69,6 +69,29 @@ SKILLS rg /path/to/local/skills --local --name my-skills
 
 > **命令别名**：`register` 可简写为 `rg`
 
+**注册指定 GitHub skill URL**：
+
+```bash
+# 注册单个 skill 目录
+SKILLS rg-skill https://github.com/org/repo/tree/main/skills/foo
+
+# 注册单个 SKILL.md 页面
+SKILLS rg-skill https://github.com/org/repo/blob/main/skills/foo/SKILL.md
+
+# 注册多个 URL 为一个精选仓库
+SKILLS rgs <url1> <url2> --name selected-skills
+```
+
+`rg-skill` 会通过 GitHub Contents API 只下载指定目录，缓存为 `github_skills` 类型的精选仓库。注册后可继续使用：
+
+```bash
+SKILLS scan selected-skills
+SKILLS install selected-skills foo --scope user --agent codex
+SKILLS update selected-skills
+```
+
+> **命令别名**：`rg-skill` 可简写为 `rgs`
+
 ### 列出已注册的仓库
 
 ```bash
@@ -161,11 +184,13 @@ SKILLS build
 
 ### 清理未引用的缓存
 
-清理 `_repos_cache/` 中不在 `.repos.json` 中的缓存目录：
+软删除 `_repos_cache/` 中不在 `.repos.json` 中的缓存目录：
 
 ```bash
 SKILLS clean
 ```
+
+缓存清理、覆盖安装和注册失败后的缓存回收都会移动到 `.codex/_trash_bin_/`，不会直接硬删除。
 
 ## 配置文件
 

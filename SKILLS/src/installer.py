@@ -11,6 +11,8 @@ from pathlib import Path
 import questionary
 from loguru import logger
 
+from _shared.utils.trash import soft_delete
+
 from .models import AgentType, InstallMode, ScopeType, Skill
 from .utils import ensure_dir, find_project_root
 
@@ -134,7 +136,8 @@ def copy_skill(source: Path, target: Path) -> None:
     - 覆盖已存在的目录
     """
     if target.exists():
-        shutil.rmtree(target)
+        moved_target = soft_delete(target, "skills-install-overwrite")
+        logger.info(f"已软删除旧 skill: {target} -> {moved_target}")
 
     shutil.copytree(source, target)
 
@@ -147,10 +150,8 @@ def link_skill(source: Path, target: Path) -> None:
     - 错误处理：权限问题，询问是否改用 copy 模式
     """
     if target.exists():
-        if target.is_symlink() or target.is_junction():
-            target.unlink()
-        else:
-            shutil.rmtree(target)
+        moved_target = soft_delete(target, "skills-install-overwrite")
+        logger.info(f"已软删除旧 skill: {target} -> {moved_target}")
 
     system = platform.system()
 

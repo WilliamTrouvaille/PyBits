@@ -10,6 +10,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from _shared.utils.trash import soft_delete
+
 
 def setup_logger(
     logs_dir: Path | None = None, log_retention_days: int = 30, log_level: str = "INFO"
@@ -94,8 +96,8 @@ def clean_old_logs(logs_dir: Path, retention_days: int) -> None:
             file_date = datetime.strptime(date_str, "%Y-%m-%d")
 
             if file_date < cutoff_date:
-                log_file.unlink()
-                logger.debug(f"删除旧日志文件: {log_file}")
+                moved_log = soft_delete(log_file, "skills-old-log")
+                logger.debug(f"旧日志已软删除: {log_file} -> {moved_log}")
         except (ValueError, OSError) as e:
             logger.warning(f"清理日志文件失败: {log_file}, 错误: {e}")
 
@@ -280,7 +282,8 @@ def extract_skills_to_flat_structure(
         # 复制到目标目录
         target_skill_dir = target_cache_dir / sanitized_name
         if target_skill_dir.exists():
-            shutil.rmtree(target_skill_dir)
+            moved_dir = soft_delete(target_skill_dir, "skills-extract-overwrite")
+            logger.info(f"已软删除旧缓存 skill: {target_skill_dir} -> {moved_dir}")
 
         shutil.copytree(skill_dir, target_skill_dir)
         extracted_skills.append(target_skill_dir)

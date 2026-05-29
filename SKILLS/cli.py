@@ -14,8 +14,10 @@ from loguru import logger
 from rich.console import Console
 from rich.table import Table
 
+from _shared.utils.trash import soft_delete
+
 from .src.installer import install_skill
-from .src.models import AgentType, InstallMode, RepositoryType, ScopeType, Skill
+from .src.models import AgentType, InstallMode, Repository, RepositoryType, ScopeType, Skill
 from .src.persistence import (
     add_repository,
     get_repository,
@@ -27,6 +29,7 @@ from .src.persistence import (
 from .src.repository import (
     parse_github_url,
     register_github_repo,
+    register_github_skills,
     register_local_repo,
     scan_repository,
 )
@@ -67,6 +70,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--local", action="store_true", help="Treat source as local directory."
     )
     register_parser.set_defaults(func=handle_register)
+
+    # rg-skill 命令（添加别名 rgs）
+    rg_skill_parser = subparsers.add_parser(
+        "rg-skill",
+        aliases=["rgs"],
+        help="Register selected skills from one or more GitHub skill URLs.",
+    )
+    rg_skill_parser.add_argument("urls", nargs="+", help="GitHub skill folder or SKILL.md URL.")
+    rg_skill_parser.add_argument(
+        "--name",
+        help="Repository name. Default: owner/repo:skill for one URL, timestamped name for many.",
+    )
+    rg_skill_parser.add_argument(
+        "--proxy", help="HTTP(S) proxy used when downloading GitHub contents."
+    )
+    rg_skill_parser.add_argument(
+        "--depth",
+        type=int,
+        default=3,
+        help="Maximum scan depth for recursive skill discovery (default: 3).",
+    )
+    rg_skill_parser.set_defaults(func=handle_register_github_skills)
 
     # ls 命令（已有别名 list）
     list_parser = subparsers.add_parser(
@@ -236,9 +261,7 @@ def handle_register(args: argparse.Namespace, settings: Settings, paths: dict[st
             print("注册已取消。")
             # 清理已创建的缓存目录
             if repo.local_path and repo.local_path.exists():
-                import shutil
-
-                shutil.rmtree(repo.local_path)
+                soft_delete(repo.local_path, "skills-register-empty")
             return 1
     else:
         display_count = min(5, len(skills))
@@ -260,6 +283,48 @@ def handle_register(args: argparse.Namespace, settings: Settings, paths: dict[st
     return 0
 
 
+def handle_register_github_skills(
+    args: argparse.Namespace, settings: Settings, paths: dict[str, Path]
+) -> int:
+    """Register one or more GitHub skill URLs as a selected repository."""
+    try:
+        repo = register_github_skills(args.urls, args.name, args.proxy, paths["repos_cache_dir"])
+    except ValueError as e:
+        print(f"错误: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"下载失败: {e}", file=sys.stderr)
+        print("提示: 目前仅支持公开 GitHub 仓库；网络不稳定时可使用 --proxy。", file=sys.stderr)
+        return 1
+
+    if repository_exists(repo.name, paths["repos_json_path"], paths["repos_local_json_path"]):
+        print(f"仓库已存在: {repo.name}", file=sys.stderr)
+        if repo.local_path and repo.local_path.exists():
+            soft_delete(repo.local_path, "skills-selected-duplicate")
+        return 1
+
+    skills = scan_repository(repo, args.depth, settings.excluded_dirs)
+    if not skills:
+        print("未发现任何合法 skill。", file=sys.stderr)
+        if repo.local_path and repo.local_path.exists():
+            soft_delete(repo.local_path, "skills-selected-empty")
+        return 1
+
+    add_repository(repo, paths["repos_json_path"], paths["repos_local_json_path"])
+    logger.info(f"[用户操作] 注册精选 GitHub skills: {repo.name}")
+
+    print(f"已注册精选仓库: {repo.name} ({repo.type.value})")
+    print(f"缓存路径: {repo.local_path}")
+    print(f"来源 URL: {len(repo.sources or [])} 个")
+    display_count = min(5, len(skills))
+    print(f"发现 {len(skills)} 个 skill（显示前 {display_count} 个）:")
+    for skill in skills[:display_count]:
+        print(f"  {skill.name:<20} {skill.description}")
+    if len(skills) > 5:
+        print(f"  ...还有 {len(skills) - 5} 个 skill，使用 SKILLS scan 查看完整列表")
+    return 0
+
+
 def handle_list(args: argparse.Namespace, settings: Settings, paths: dict[str, Path]) -> int:
     """List registered repositories."""
     repos = load_repositories(paths["repos_json_path"], paths["repos_local_json_path"])
@@ -277,6 +342,8 @@ def handle_list(args: argparse.Namespace, settings: Settings, paths: dict[str, P
         source = (
             repo.url
             if repo.type == RepositoryType.GITHUB
+            else ", ".join(repo.sources or [])
+            if repo.type == RepositoryType.GITHUB_SKILLS
             else str(repo.path)
             if repo.path
             else "N/A"
@@ -536,7 +603,9 @@ def handle_build(args: argparse.Namespace, settings: Settings, paths: dict[str, 
         return 0
 
     # 筛选出需要重建的 GitHub 仓库
-    github_repos = [r for r in repos if r.type == RepositoryType.GITHUB]
+    github_repos = [
+        r for r in repos if r.type in (RepositoryType.GITHUB, RepositoryType.GITHUB_SKILLS)
+    ]
     missing_repos = [r for r in github_repos if not r.local_path or not r.local_path.exists()]
 
     if not missing_repos:
@@ -563,11 +632,11 @@ def handle_build(args: argparse.Namespace, settings: Settings, paths: dict[str, 
 
     print()
     for repo in missing_repos:
-        print(f"正在克隆 {repo.name} ...")
+        print(f"正在重建 {repo.name} ...")
         try:
-            new_repo = register_github_repo(repo.url, args.proxy, paths["repos_cache_dir"])
+            new_repo = rebuild_remote_repository(repo, args.proxy, paths["repos_cache_dir"])
             update_repository(new_repo, paths["repos_json_path"], paths["repos_local_json_path"])
-            print("克隆成功！")
+            print("重建成功！")
 
             # 扫描并显示 skills
             print(f"正在扫描 skills（深度: {args.depth}）...")
@@ -588,7 +657,9 @@ def handle_build(args: argparse.Namespace, settings: Settings, paths: dict[str, 
     # 检查缓存目录数量
     if paths["repos_cache_dir"].exists():
         cache_dirs = [d for d in paths["repos_cache_dir"].iterdir() if d.is_dir()]
-        repos_count = len([r for r in repos if r.type == RepositoryType.GITHUB])
+        repos_count = len(
+            [r for r in repos if r.type in (RepositoryType.GITHUB, RepositoryType.GITHUB_SKILLS)]
+        )
         if len(cache_dirs) > repos_count:
             print("\n检查缓存目录...")
             print(
@@ -602,7 +673,9 @@ def handle_build(args: argparse.Namespace, settings: Settings, paths: dict[str, 
 def handle_update(args: argparse.Namespace, settings: Settings, paths: dict[str, Path]) -> int:
     """Update registered GitHub repositories."""
     repos = load_repositories(paths["repos_json_path"], paths["repos_local_json_path"])
-    github_repos = [r for r in repos if r.type == RepositoryType.GITHUB]
+    github_repos = [
+        r for r in repos if r.type in (RepositoryType.GITHUB, RepositoryType.GITHUB_SKILLS)
+    ]
 
     if not github_repos:
         print("未找到已注册的 GitHub 仓库。")
@@ -619,8 +692,8 @@ def handle_update(args: argparse.Namespace, settings: Settings, paths: dict[str,
             if not repo:
                 print(f"仓库不存在: {repo_name}", file=sys.stderr)
                 return 1
-            if repo.type != RepositoryType.GITHUB:
-                print(f"仓库 '{repo_name}' 不是 GitHub 仓库，跳过。", file=sys.stderr)
+            if repo.type not in (RepositoryType.GITHUB, RepositoryType.GITHUB_SKILLS):
+                print(f"仓库 '{repo_name}' 不是可更新的 GitHub 仓库，跳过。", file=sys.stderr)
                 continue
             repos_to_update.append(repo)
     else:
@@ -654,9 +727,9 @@ def handle_update(args: argparse.Namespace, settings: Settings, paths: dict[str,
     for repo in repos_to_update:
         print(f"正在更新 {repo.name} ...")
         try:
-            new_repo = register_github_repo(repo.url, args.proxy, paths["repos_cache_dir"])
+            new_repo = rebuild_remote_repository(repo, args.proxy, paths["repos_cache_dir"])
             update_repository(new_repo, paths["repos_json_path"], paths["repos_local_json_path"])
-            print("克隆成功！")
+            print("更新成功！")
 
             # 扫描并显示 skills
             skills = scan_repository(new_repo, args.depth, settings.excluded_dirs)
@@ -694,6 +767,8 @@ def handle_clean(args: argparse.Namespace, settings: Settings, paths: dict[str, 
     # 查找未引用的缓存目录
     unreferenced_dirs = []
     for cache_dir in paths["repos_cache_dir"].iterdir():
+        if cache_dir.name == "favorite":
+            continue
         if cache_dir.is_dir() and cache_dir.name not in referenced_dirs:
             unreferenced_dirs.append(cache_dir)
 
@@ -707,25 +782,43 @@ def handle_clean(args: argparse.Namespace, settings: Settings, paths: dict[str, 
         print(f"  {i}. {cache_dir.name}")
     print(f"\n总计: {len(unreferenced_dirs)} 个目录")
 
-    if not questionary.confirm("\n是否删除这些目录？").ask():
+    if not questionary.confirm("\n是否软删除这些目录？").ask():
         logger.info("[用户操作] 取消清理缓存")
         print("清理已取消。")
         return 1
-
-    import shutil
 
     dir_names = ", ".join(d.name for d in unreferenced_dirs)
     logger.info(f"[用户操作] 清理缓存目录: {dir_names}")
 
     for cache_dir in unreferenced_dirs:
-        print(f"正在删除 {cache_dir.name} ...")
+        print(f"正在软删除 {cache_dir.name} ...")
         try:
-            shutil.rmtree(cache_dir)
+            moved_dir = soft_delete(cache_dir, "skills-clean-cache")
+            logger.info(f"缓存目录已软删除: {cache_dir} -> {moved_dir}")
         except Exception as e:
-            print(f"删除失败: {e}", file=sys.stderr)
+            print(f"软删除失败: {e}", file=sys.stderr)
 
     print("\n清理完成！")
     return 0
+
+
+def rebuild_remote_repository(
+    repo: Repository,
+    proxy: str | None,
+    repos_cache_dir: Path,
+) -> Repository:
+    """Rebuild a GitHub-backed repository from its persisted source metadata."""
+    if repo.type == RepositoryType.GITHUB:
+        if not repo.url:
+            raise ValueError(f"GitHub 仓库缺少 URL: {repo.name}")
+        return register_github_repo(repo.url, proxy, repos_cache_dir)
+
+    if repo.type == RepositoryType.GITHUB_SKILLS:
+        if not repo.sources:
+            raise ValueError(f"精选 GitHub skills 仓库缺少 sources: {repo.name}")
+        return register_github_skills(repo.sources, repo.name, proxy, repos_cache_dir)
+
+    raise ValueError(f"仓库不是可重建的远程仓库: {repo.name}")
 
 
 def handle_status(args: argparse.Namespace, settings: Settings, paths: dict[str, Path]) -> int:

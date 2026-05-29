@@ -9,6 +9,8 @@ from pathlib import Path
 from filelock import FileLock
 from loguru import logger
 
+from _shared.utils.trash import soft_delete
+
 from .models import Repository, RepositoryType
 
 
@@ -48,7 +50,7 @@ def save_local_config(data: dict, repos_local_json_path: Path) -> None:
                 temp_path.replace(repos_local_json_path)
             finally:
                 if temp_path is not None and temp_path.exists():
-                    temp_path.unlink()
+                    soft_delete(temp_path, "skills-temp-config")
     except Exception as e:
         logger.error(f"保存本地配置失败: {e}")
         raise
@@ -91,7 +93,7 @@ def load_repositories(repos_json_path: Path, repos_local_json_path: Path) -> lis
 
             # 补充路径
             for repo in repos:
-                if repo.type == RepositoryType.GITHUB:
+                if repo.type in (RepositoryType.GITHUB, RepositoryType.GITHUB_SKILLS):
                     cache_path_str = github_cache_paths.get(repo.name)
                     repo.local_path = Path(cache_path_str) if cache_path_str else None
                 elif repo.type == RepositoryType.LOCAL:
@@ -138,7 +140,7 @@ def save_repositories(
                 temp_path.replace(repos_json_path)
             finally:
                 if temp_path is not None and temp_path.exists():
-                    temp_path.unlink()
+                    soft_delete(temp_path, "skills-temp-repos")
             logger.debug(f"保存了 {len(repos)} 个仓库到 {repos_json_path}")
 
             # 构建路径映射表
@@ -146,7 +148,10 @@ def save_repositories(
             local_paths = {}
 
             for repo in repos:
-                if repo.type == RepositoryType.GITHUB and repo.local_path:
+                if (
+                    repo.type in (RepositoryType.GITHUB, RepositoryType.GITHUB_SKILLS)
+                    and repo.local_path
+                ):
                     github_cache_paths[repo.name] = str(repo.local_path)
                 elif repo.type == RepositoryType.LOCAL and repo.path:
                     local_paths[repo.name] = str(repo.path)
