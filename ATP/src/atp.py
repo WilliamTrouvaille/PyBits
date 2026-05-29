@@ -25,6 +25,8 @@ from typing import NoReturn
 from loguru import logger
 from rich.console import Console
 
+from _shared.utils.trash import soft_delete
+
 console = Console()
 console_err = Console(stderr=True)
 
@@ -343,9 +345,10 @@ def setup_logger(log_dir: Path, json_mode: bool = False) -> None:
     for log_file in log_dir.glob("*.log"):
         try:
             if datetime.fromtimestamp(log_file.stat().st_mtime) < cutoff:
-                log_file.unlink()
-        except Exception:
-            pass
+                moved_log = soft_delete(log_file, "atp-old-log")
+                logger.debug(f"过期日志已软删除: {log_file} -> {moved_log}")
+        except OSError as exc:
+            logger.warning(f"清理过期日志失败: {log_file} ({exc})")
 
     # 移除默认 handler
     logger.remove()
