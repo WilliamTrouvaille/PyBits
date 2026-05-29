@@ -19,7 +19,7 @@ def expand_services(values: list[str] | None) -> list[str]:
     Returns:
         标准化的服务名称列表 ["claude", "codex"]
     """
-    if not values or "all" in values:
+    if not values or any(value in ("all", "both") for value in values):
         return ["claude", "codex"]
 
     out: list[str] = []

@@ -17,6 +17,8 @@ from .src.probe_builder import expand_services
 from .src.report import build_report
 from .src.spinner import with_spinner
 
+SERVICE_ALIASES = {"all", "both", "cc", "claude", "claude_code", "codex"}
+
 
 def build_parser() -> argparse.ArgumentParser:
     """
@@ -33,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
   %(prog)s --raw                    Output raw JSON
   %(prog)s --pretty                 Output formatted JSON
   %(prog)s --service claude         Probe Claude Code only
+  %(prog)s cc                       Probe Claude Code using service alias
   %(prog)s --timeout 60             Use 60-second timeout
 """,
     )
@@ -60,9 +63,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--service",
         action="append",
-        choices=["claude", "codex", "both"],
+        choices=["claude", "codex", "both", "all"],
         default=[],
         help="Service to probe (can be repeated). Default: both",
+    )
+    p.add_argument(
+        "service_aliases",
+        nargs="*",
+        help="Optional service aliases: claude, cc, claude_code, codex, both, all",
     )
     p.add_argument(
         "--timeout",
@@ -149,14 +157,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     """主入口函数"""
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
 
     # 初始化日志
     setup_logger(args.verbose)
     logger.info("HELLO 探测工具启动")
 
     # 标准化服务列表
-    services = expand_services(args.service)
+    service_values = [*args.service, *args.service_aliases]
+    unknown_services = sorted(set(service_values) - SERVICE_ALIASES)
+    if unknown_services:
+        parser.error(f"unknown service alias: {', '.join(unknown_services)}")
+
+    services = expand_services(service_values)
     logger.info(f"探测服务: {services}")
 
     # 确定输出模式
