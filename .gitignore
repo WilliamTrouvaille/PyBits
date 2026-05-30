@@ -3,6 +3,8 @@ uv.lock
 *.egg-info/
 build/
 
+.codex
+
 SKILLS/logs/
 SKILLS/tests/
 SKILLS/_repos_cache
