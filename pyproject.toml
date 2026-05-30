@@ -25,6 +25,7 @@ PTM = "PTM.cli:main"
 PTP = "PTP.cli:main"
 ATP = "ATP.cli:main"
 AIM = "AIM.cli:main"
+CTA = "CTA.cli:main"
 
 [tool.uv]
 package = true
@@ -35,5 +36,5 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["HELLO*", "SKILLS*", "PTM*", "PTP*", "ATP*", "AIM*", "_shared*"]
+include = ["HELLO*", "SKILLS*", "PTM*", "PTP*", "ATP*", "AIM*", "CTA*", "_shared*"]
 exclude = ["SKILLS._repos_cache*"]
