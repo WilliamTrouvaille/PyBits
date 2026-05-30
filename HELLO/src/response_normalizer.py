@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .hash_utils import text_sha256_12
+from .json_utils import parse_json_maybe, parse_jsonl
 from .security import redact
-from .utils import parse_json_maybe, parse_jsonl, text_sha256_12
 
 
 def event_type_of(obj: Any) -> str:

@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .hash_utils import sha256_12
 from .security import collect_header_sources, redact
-from .utils import sha256_12
 
 
 def load_json_file(path: Path) -> tuple[Any | None, str | None]:

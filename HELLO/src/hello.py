@@ -14,6 +14,7 @@ from loguru import logger
 from .auth_checker import missing_cli_result, summarize_auth_check
 from .config_parser import config_summary
 from .constants import DEFAULT_PROMPT, DEFAULT_TAIL_CHARS, DEFAULT_TIMEOUT, SCHEMA_VERSION
+from .path_utils import expand_path
 from .probe_builder import (
     assemble_service_result,
     build_claude_command,
@@ -23,7 +24,7 @@ from .probe_builder import (
 from .process import get_version, run_process
 from .response_normalizer import normalize_claude_response, normalize_codex_response
 from .schema import AuthSummary, ProbeEnvelope, ServiceResult
-from .utils import expand_path, utc_now
+from .time_utils import utc_now
 
 
 def probe_claude(

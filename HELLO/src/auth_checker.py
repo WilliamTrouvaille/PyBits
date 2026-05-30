@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from .json_utils import parse_json_maybe
 from .security import redact
-from .utils import parse_json_maybe, tail_text
+from .text_utils import tail_text
 
 
 def summarize_auth_check(name: str, res: dict[str, Any]) -> dict[str, Any]:

@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .command_utils import command_display
 from .schema import AuthSummary, ServiceResult
-from .utils import command_display, tail_text
+from .text_utils import tail_text
 
 
 def expand_services(values: list[str] | None) -> list[str]:

@@ -18,7 +18,6 @@ from .models import Repository, RepositoryType
 from .persistence import (
     add_repository,
     get_repository,
-    load_repositories,
     update_repository,
 )
 from .utils import ensure_dir
@@ -115,9 +114,3 @@ def remove_favorite(skill_name: str, repos_cache_dir: Path) -> bool:
     logger.info(f"[用户操作] 移除常用 skill: {skill_name} -> {moved}")
     return True
 
-
-def favorite_registered(repos_json_path: Path, repos_local_json_path: Path) -> bool:
-    """favorite 是否已在 .repos.json 中注册。"""
-    return any(
-        r.name == FAVORITE_NAME for r in load_repositories(repos_json_path, repos_local_json_path)
-    )

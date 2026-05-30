@@ -11,7 +11,6 @@ from pathlib import Path
 import yaml
 from loguru import logger
 
-from _shared.utils.logging import setup_tool_logger
 from _shared.utils.trash import soft_delete
 
 
@@ -121,51 +120,12 @@ def get_effective_paths(settings: Settings, project_root: Path) -> dict[str, Pat
     }
 
 
-def setup_logger(
-    logs_dir: Path | None = None, log_retention_days: int = 30, log_level: str = "INFO"
-) -> None:
-    """初始化日志，委托给共享的 _shared.utils.logging。
-
-    控制台输出 WARNING 及以上；文件输出 DEBUG 及以上（由共享实现固定），
-    因此 log_level 主要保留为向后兼容参数。
-
-    Args:
-        logs_dir: 日志目录路径
-        log_retention_days: 日志保留天数
-        log_level: 兼容参数（共享实现以 DEBUG 写文件、WARNING 写控制台）
-    """
-    _ = log_level
-    setup_tool_logger(
-        "SKILLS",
-        logs_dir=logs_dir,
-        retention_days=log_retention_days,
-        console_level="WARNING",
-    )
-
-
 def configure_git_proxy(proxy: str) -> dict[str, str]:
     """配置 git 代理环境变量"""
     return {
         "http_proxy": proxy,
         "https_proxy": proxy,
     }
-
-
-def normalize_repo_name(url_or_path: str) -> str:
-    """
-    规范化仓库名称
-    - GitHub: owner/repo
-    - 本地: 目录名
-    """
-    if "/" in url_or_path and not url_or_path.startswith(("http://", "https://")):
-        return url_or_path
-
-    if url_or_path.startswith(("http://", "https://")):
-        parts = url_or_path.rstrip("/").split("/")
-        if len(parts) >= 2:
-            return f"{parts[-2]}/{parts[-1].replace('.git', '')}"
-
-    return Path(url_or_path).name
 
 
 def ensure_dir(path: Path) -> None:

@@ -1,30 +1,25 @@
-"""Command-line entry point for CTA."""
+"""
+CTA 命令行入口。
+"""
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
+from _shared.utils.trash import soft_delete
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="CTA",
-        description="Create AGENTS.md from CLAUDE.md in the current directory.",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite AGENTS.md if it already exists.",
-    )
-    return parser
-
-
-def convert_content(content: str) -> str:
-    return content.replace("Claude", "Codex").replace(".claude/", ".codex/")
+from .src.cli_parser import build_parser
+from .src.converter import convert_content
 
 
 def main() -> int:
+    """
+    将当前目录的 CLAUDE.md 转换为 AGENTS.md。
+
+    Returns:
+        进程退出码，0 表示转换成功。
+    """
     parser = build_parser()
     args = parser.parse_args()
 
@@ -43,6 +38,8 @@ def main() -> int:
         return 1
 
     content = source_path.read_text(encoding="utf-8")
+    if target_path.exists():
+        soft_delete(target_path, "cta-force-agents")
     target_path.write_text(convert_content(content), encoding="utf-8")
     print(f"Created {target_path}")
     return 0

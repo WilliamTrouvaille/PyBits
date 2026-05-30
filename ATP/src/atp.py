@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
@@ -17,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+import argparse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NoReturn
@@ -25,6 +25,8 @@ from loguru import logger
 from rich.console import Console
 
 from _shared.utils.logging import setup_tool_logger
+
+from .cli_parser import build_parser
 
 console = Console()
 console_err = Console(stderr=True)
@@ -56,7 +58,7 @@ def extract_arxiv_id(raw: str) -> tuple[str, bool]:
         has_version = m.group(2) is not None
         return arxiv_id, has_version
 
-    # URL：https://arxiv.org/abs/1911.11763v2 或 .../pdf/...
+    # 支持 arxiv.org/abs/... 与 arxiv.org/pdf/... URL，并保留可选版本号。
     m = re.match(r"https?://arxiv\.org/(abs|pdf)/(\d{4}\.\d{4,5})(v\d+)?", raw)
     if m:
         arxiv_id = m.group(2) + (m.group(3) or "")
@@ -105,6 +107,29 @@ def check_arxiv_tool() -> bool:
         return False
 
 
+def find_main_tex_file(cache_dir: Path) -> Path | None:
+    """
+    在缓存目录中查找最可能的主 .tex 文件。
+
+    Args:
+        cache_dir: arxiv-to-prompt 的缓存目录。
+
+    Returns:
+        文件大小最大的非空 .tex 文件；找不到时返回 None。
+    """
+    tex_files = list(cache_dir.glob("*.tex"))
+    if not tex_files:
+        tex_files = list(cache_dir.rglob("*.tex"))
+
+    if not tex_files:
+        return None
+
+    main_tex = max(tex_files, key=lambda f: f.stat().st_size)
+    if main_tex.stat().st_size > 0:
+        return main_tex
+    return None
+
+
 def check_cache(arxiv_id: str) -> Path | None:
     """检查缓存是否存在。
 
@@ -118,18 +143,60 @@ def check_cache(arxiv_id: str) -> Path | None:
     if not cache_dir.exists():
         return None
 
-    # 查找 .tex 文件
-    tex_files = list(cache_dir.glob("*.tex"))
-    if not tex_files:
-        tex_files = list(cache_dir.rglob("*.tex"))
+    return find_main_tex_file(cache_dir)
 
-    if tex_files:
-        # 返回最大的 .tex 文件
-        main_tex = max(tex_files, key=lambda f: f.stat().st_size)
-        if main_tex.stat().st_size > 0:
-            return main_tex
 
-    return None
+def build_arxiv_to_prompt_command(
+    arxiv_id: str,
+    cache_dir: Path,
+    no_comments: bool,
+    no_appendix: bool,
+    *,
+    figure_paths: bool = False,
+) -> list[str]:
+    """
+    构建 arxiv-to-prompt 命令参数。
+
+    Args:
+        arxiv_id: arXiv ID。
+        cache_dir: 缓存目录。
+        no_comments: 是否移除注释。
+        no_appendix: 是否移除附录。
+        figure_paths: 是否请求输出图片路径。
+
+    Returns:
+        可直接传给 subprocess.run 的命令列表。
+    """
+    cmd = ["arxiv-to-prompt", arxiv_id]
+    if figure_paths:
+        cmd.append("--figure-paths")
+    else:
+        cmd.append("--force-download")
+    cmd.extend(["--cache-dir", str(cache_dir)])
+    if no_comments:
+        cmd.append("--no-comments")
+    if no_appendix:
+        cmd.append("--no-appendix")
+    return cmd
+
+
+def build_proxy_env(proxy: str | None) -> dict[str, str] | None:
+    """
+    根据代理参数构建子进程环境变量。
+
+    Args:
+        proxy: HTTP(S) 代理 URL。
+
+    Returns:
+        设置了代理的环境变量副本；未提供代理时返回 None。
+    """
+    if not proxy:
+        return None
+    env = os.environ.copy()
+    env["HTTP_PROXY"] = proxy
+    env["HTTPS_PROXY"] = proxy
+    logger.info(f"使用代理: {proxy}")
+    return env
 
 
 def download_paper(
@@ -140,7 +207,8 @@ def download_paper(
     no_appendix: bool,
     timeout: int = 90,
 ) -> Path:
-    """下载并转换论文。
+    """
+    下载并转换论文。
 
     Args:
         arxiv_id: arXiv ID
@@ -158,25 +226,13 @@ def download_paper(
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # 构建命令
-    cmd = [
-        "arxiv-to-prompt",
+    cmd = build_arxiv_to_prompt_command(
         arxiv_id,
-        "--force-download",
-        "--cache-dir",
-        str(cache_dir),
-    ]
-    if no_comments:
-        cmd.append("--no-comments")
-    if no_appendix:
-        cmd.append("--no-appendix")
-
-    # 设置环境变量（代理）
-    env = os.environ.copy()
-    if proxy:
-        env["HTTP_PROXY"] = proxy
-        env["HTTPS_PROXY"] = proxy
-        logger.info(f"使用代理: {proxy}")
+        cache_dir,
+        no_comments,
+        no_appendix,
+    )
+    env = build_proxy_env(proxy)
 
     # 执行命令（带重试）
     logger.info(f"开始下载论文: {arxiv_id}")
@@ -219,17 +275,12 @@ def download_paper(
         # 所有重试都失败
         raise RuntimeError(f"arxiv-to-prompt 执行失败: {last_error}")
 
-    # 查找生成的 .tex 文件
     console.print("[cyan]正在本地处理...[/cyan]")
-    tex_files = list(cache_dir.glob("*.tex"))
-    if not tex_files:
-        tex_files = list(cache_dir.rglob("*.tex"))
-
-    if not tex_files:
+    main_tex = find_main_tex_file(cache_dir)
+    if main_tex is None:
         logger.error(f"未找到生成的 .tex 文件，缓存目录: {cache_dir}")
         raise RuntimeError("未找到生成的 .tex 文件")
 
-    main_tex = max(tex_files, key=lambda f: f.stat().st_size)
     logger.info(f"找到主 .tex 文件: {main_tex} ({main_tex.stat().st_size} 字节)")
     return main_tex
 
@@ -253,18 +304,13 @@ def extract_figures(
     Returns:
         复制后的图片路径列表
     """
-    # 调用 arxiv-to-prompt --figure-paths 获取图片路径
-    cmd = [
-        "arxiv-to-prompt",
+    cmd = build_arxiv_to_prompt_command(
         arxiv_id,
-        "--figure-paths",
-        "--cache-dir",
-        str(cache_dir),
-    ]
-    if no_comments:
-        cmd.append("--no-comments")
-    if no_appendix:
-        cmd.append("--no-appendix")
+        cache_dir,
+        no_comments,
+        no_appendix,
+        figure_paths=True,
+    )
 
     logger.info("开始提取图片路径")
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -330,107 +376,6 @@ def generate_manifest(
     return manifest
 
 
-def setup_logger(log_dir: Path, json_mode: bool = False) -> None:
-    """配置日志系统。
-
-    Args:
-        log_dir: 日志目录
-        json_mode: 是否为 JSON 模式（日志输出到 stderr）
-    """
-    setup_tool_logger(
-        "atp",
-        logs_dir=log_dir,
-        retention_days=30,
-        console_level="INFO" if json_mode else "WARNING",
-    )
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """构建命令行参数解析器。
-
-    Returns:
-        ArgumentParser 实例
-    """
-    parser = argparse.ArgumentParser(
-        prog="ATP",
-        description="下载并转换 arXiv 论文的 LaTeX 源码",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例:
-  ATP 1911.11763                           # 输出到桌面
-  ATP https://arxiv.org/abs/2303.08774     # 使用 URL
-  ATP 1911.11763 --out-dir ./papers        # 自定义输出目录
-  ATP 1911.11763 --json                    # 输出 manifest.json
-  ATP 1911.11763 --force                   # 强制重新下载
-  ATP 1911.11763 --proxy http://proxy:8080 # 使用代理
-        """,
-    )
-
-    parser.add_argument(
-        "arxiv_input",
-        metavar="<arxiv-id-or-url>",
-        help="arXiv ID 或 URL（如 1911.11763 或 https://arxiv.org/abs/1911.11763）",
-    )
-
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        help="输出目录（默认：系统桌面）",
-    )
-
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="输出 manifest.json 到 --out-dir 并打印到 stdout",
-    )
-
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="强制重新下载，忽略缓存",
-    )
-
-    parser.add_argument(
-        "--proxy",
-        type=str,
-        help="代理 URL（如 http://proxy:8080）",
-    )
-
-    parser.add_argument(
-        "--no-comments",
-        action="store_true",
-        default=True,
-        help="移除注释（默认启用）",
-    )
-
-    parser.add_argument(
-        "--comments",
-        action="store_true",
-        help="保留注释（覆盖 --no-comments）",
-    )
-
-    parser.add_argument(
-        "--figure-paths",
-        action="store_true",
-        default=True,
-        help="提取图片并复制（默认启用）",
-    )
-
-    parser.add_argument(
-        "--no-figure-paths",
-        action="store_true",
-        help="不提取图片（覆盖 --figure-paths）",
-    )
-
-    parser.add_argument(
-        "--no-appendix",
-        action="store_true",
-        help="移除附录",
-    )
-
-    return parser
-
-
 def error_exit(message: str, exit_code: int = 1) -> NoReturn:
     """输出错误信息并退出。
 
@@ -453,17 +398,33 @@ def main() -> int:
     args = parser.parse_args()
 
     # 配置日志
-    setup_logger(LOG_DIR, json_mode=args.json)
+    setup_tool_logger(
+        "atp",
+        logs_dir=LOG_DIR,
+        retention_days=30,
+        console_level="INFO" if args.json else "WARNING",
+    )
 
     # 记录用户输入
     logger.info(f"用户输入: {args.arxiv_input}")
     logger.info(f"命令行参数: {sys.argv[1:]}")
 
-    # 检查 arxiv-to-prompt 是否已安装
+    return run_atp_workflow(args)
+
+
+def run_atp_workflow(args: argparse.Namespace) -> int:
+    """
+    执行 ATP 的下载、复制、图片提取和 manifest 输出流程。
+
+    Args:
+        args: argparse 解析出的命名空间。
+
+    Returns:
+        进程退出码，0 表示处理成功。
+    """
     if not check_arxiv_tool():
         error_exit("未找到 arxiv-to-prompt 工具\n请先安装: uv tool install arxiv-to-prompt")
 
-    # 提取 arXiv ID
     try:
         arxiv_id, has_version = extract_arxiv_id(args.arxiv_input)
         logger.info(
@@ -472,16 +433,13 @@ def main() -> int:
     except ValueError as e:
         error_exit(str(e))
 
-    # 确定输出目录
     output_dir = args.out_dir.resolve() if args.out_dir else get_desktop_path()
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"输出目录: {output_dir}")
 
-    # 处理参数覆盖
     no_comments = args.no_comments and not args.comments
     extract_figures_flag = args.figure_paths and not args.no_figure_paths
 
-    # 记录省略参数补全
     logger.info(
         f"参数补全: --out-dir={output_dir}, "
         f"--no-comments={no_comments}, "
@@ -489,7 +447,6 @@ def main() -> int:
         f"--no-appendix={args.no_appendix}"
     )
 
-    # 检查缓存
     cache_dir = CACHE_ROOT / arxiv_id
     cached_tex = None if args.force else check_cache(arxiv_id)
 
@@ -503,7 +460,6 @@ def main() -> int:
         else:
             logger.info(f"缓存未命中: {cache_dir}")
 
-        # 下载论文
         try:
             tex_path = download_paper(
                 arxiv_id,
@@ -515,13 +471,11 @@ def main() -> int:
         except Exception as e:
             error_exit(f"下载失败: {e}")
 
-    # 复制 .tex 文件到输出目录
     output_tex = output_dir / f"{arxiv_id}.tex"
     shutil.copy2(tex_path, output_tex)
     logger.info(f"写入文件: {output_tex}")
     console.print(f"[green]OK[/green] TEX 文件: {output_tex}")
 
-    # 提取图片
     figure_paths = None
     if extract_figures_flag:
         try:
@@ -540,7 +494,6 @@ def main() -> int:
             logger.warning(f"图片提取失败: {e}")
             console.print(f"[yellow]警告: 图片提取失败: {e}[/yellow]")
 
-    # 生成 manifest.json
     if args.json:
         manifest = generate_manifest(arxiv_id, output_tex, figure_paths)
         manifest_path = output_dir / "manifest.json"
@@ -550,7 +503,6 @@ def main() -> int:
 
         logger.info(f"写入 manifest: {manifest_path}")
 
-        # 输出到 stdout
         print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
     logger.info("执行成功，退出码 0")

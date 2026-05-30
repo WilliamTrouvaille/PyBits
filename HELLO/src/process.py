@@ -7,7 +7,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .utils import to_text, utc_now
+from .text_utils import to_text
+from .time_utils import utc_now
 
 
 def run_process(
