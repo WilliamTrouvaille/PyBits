@@ -39,6 +39,7 @@ PTM input.pdf --out-dir ./output
 PTM input.pdf --ocr --images --keep-zip
 PTM input.pdf --page-ranges "2,4-6"
 PTM input.pdf --proxy http://127.0.0.1:7890
+PTM input.pdf --download-retries 6 --download-backoff 3
 ```
 
 转换成功时，stdout 只输出最终 Markdown 文件路径：
@@ -61,6 +62,8 @@ PTM input.pdf [OPTIONS]
   --out-dir DIR          输出目录，默认与输入 PDF 同目录
   --timeout SECONDS      总轮询超时时间，默认 300 秒
   --poll-interval SEC    轮询间隔，默认 3 秒
+  --download-retries N   下载失败后的重试次数，默认 4
+  --download-backoff SEC 下载重试的初始退避秒数，默认 2.0
   --model-version VER    模型版本：pipeline、vlm 或 MinerU-HTML，默认 vlm
   --lang LANG            语言代码，默认 ch
   --images               保留 MinerU 结果中的 images/ 目录
@@ -88,6 +91,8 @@ PTM input.pdf [OPTIONS]
 
 未启用 `--keep-zip` 时，PTM 会在成功提取 Markdown 后删除下载的结果 zip。
 
+下载结果 zip 时，PTM 会先写入同目录下的 `.part` 临时文件；如果网络中断，下一次下载重试会通过 HTTP `Range` 从已完成字节继续。下载失败后，PTM 会按指数退避重试，并在每次可重试失败后使用已有 `batch_id` 重新拉取 MinerU 结果 zip URL，避免临时 CDN URL 失效导致整次任务作废。
+
 ## 错误格式
 
 可预期错误统一输出为：
@@ -104,6 +109,7 @@ HINT: Check the file path and try again.
 - 文件过大：拆分或压缩 PDF。
 - 页数过多：拆分 PDF，或使用 `--page-ranges` 处理部分页码。
 - 轮询超时：对复杂 PDF 增大 `--timeout`。
+- 下载失败：先尝试 `--proxy`；必要时增大 `--download-retries` 或 `--download-backoff`。
 
 ## 安全说明
 

@@ -91,6 +91,15 @@
       "sources": [
         "https://github.com/vinvcn/mattpocock-skills-zh-CN/blob/main/skills/productivity/write-a-skill/SKILL.md"
       ]
+    },
+    {
+      "name": "color4-alt/CiteCheck",
+      "type": "github",
+      "url": "https://github.com/color4-alt/CiteCheck.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-05-31T09:29:40.341401",
+      "sources": null
     }
   ]
 }

@@ -10,12 +10,12 @@ from pathlib import Path
 
 import questionary
 from loguru import logger
-from questionary import Choice
+from questionary import Choice, Separator
 
 from ..installer import install_skill
 from ..models import InstallMode, Repository, ScopeType, Skill
 from ..persistence import get_repository, load_repositories
-from ..recent import load_recent, record_recent
+from ..recent import RecentSkillRef, load_recent_refs, record_recent
 from ..repository import scan_repository
 from ..utils import Settings
 
@@ -88,7 +88,11 @@ def handle_install(args: argparse.Namespace, settings: Settings, paths: dict[str
         install_skill(
             available_skills[skill_name], agent, scope, mode, settings, args.force, project_dir
         )
-        record_recent(skill_name, paths["recent_installs_path"])
+        record_recent(
+            skill_name,
+            paths["recent_installs_path"],
+            available_skills[skill_name].repository_name,
+        )
 
     return 0
 
@@ -109,35 +113,41 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
         print("未找到已注册仓库，请先使用 `SKILLS register` 注册仓库。")
         return 1
 
-    selected_repo = select_repository_or_recent(repos, paths)
-    if not selected_repo:
+    selected_source = select_repository_or_recent(repos, paths)
+    if not selected_source:
         logger.info("[用户操作] 取消安装 (未选择仓库)")
         print("安装已取消。")
         return 1
 
-    if selected_repo == RECENT_LABEL:
-        skills = collect_recent_skills(repos, settings, paths)
-        repo_display = RECENT_LABEL
-        if not skills:
-            print("最近安装的 skills 在当前已注册仓库中均未找到。")
+    if isinstance(selected_source, RecentSkillRef):
+        skill = resolve_recent_skill(selected_source, repos, settings)
+        if skill is None:
+            print(f"最近安装记录已失效，当前已注册仓库中未找到: {selected_source.name}")
             return 1
+        repo_display = f"{RECENT_LABEL} ({skill.repository_name})"
+        selected_skills = [skill]
     else:
-        repo_display = selected_repo.name
-        skills = scan_repository(selected_repo, settings.default_scan_depth, settings.excluded_dirs)
+        repo_display = selected_source.name
+        skills = scan_repository(
+            selected_source,
+            settings.default_scan_depth,
+            settings.excluded_dirs,
+            log_summary=False,
+        )
         if not skills:
-            print(f"仓库 {selected_repo.name} 中未找到任何合法 skill。")
+            print(f"仓库 {selected_source.name} 中未找到任何合法 skill。")
             return 1
 
-    skill_choices = [Choice(title=format_skill_label(skill), value=skill) for skill in skills]
-    selected_skills = questionary.checkbox(
-        "选择要安装的 skills:",
-        choices=skill_choices,
-        instruction="(方向键移动，空格选择，a 全选，i 反选)",
-    ).ask()
-    if not selected_skills:
-        logger.info("[用户操作] 取消安装 (未选择 skills)")
-        print("安装已取消。")
-        return 1
+        skill_choices = [Choice(title=format_skill_label(skill), value=skill) for skill in skills]
+        selected_skills = questionary.checkbox(
+            "选择要安装的 skills:",
+            choices=skill_choices,
+            instruction="(方向键移动，空格选择，a 全选，i 反选)",
+        ).ask()
+        if not selected_skills:
+            logger.info("[用户操作] 取消安装 (未选择 skills)")
+            print("安装已取消。")
+            return 1
 
     install_options = select_install_options(settings)
     if install_options is None:
@@ -173,18 +183,24 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
             InstallMode(mode_value),
             settings,
         )
-        record_recent(skill.name, paths["recent_installs_path"])
+        record_recent(skill.name, paths["recent_installs_path"], skill.repository_name)
 
     return 0
 
 
-def format_skill_label(skill: Skill, max_description_length: int = 100) -> str:
+def format_skill_label(
+    skill: Skill,
+    max_description_length: int = 100,
+    *,
+    include_repository: bool = False,
+) -> str:
     """
     格式化交互选择中的 skill 展示文案。
 
     Args:
         skill: 待展示的 skill。
         max_description_length: 描述最大长度，超出时截断。
+        include_repository: 是否在名称后展示来源仓库。
 
     Returns:
         展示用标签字符串。
@@ -192,58 +208,110 @@ def format_skill_label(skill: Skill, max_description_length: int = 100) -> str:
     description = skill.description
     if len(description) > max_description_length:
         description = description[:max_description_length] + "..."
-    return f"{skill.name} - {description}"
+    name = skill.name
+    if include_repository:
+        name = f"{name} ({skill.repository_name})"
+    return f"{name} - {description}"
 
 
 RECENT_LABEL = "[最近安装]"
+REPOSITORY_LABEL = "[从仓库安装]"
 
 
 def select_repository_or_recent(
     repos: list[Repository],
     paths: dict[str, Path],
-) -> Repository | str | None:
+) -> Repository | RecentSkillRef | None:
     """
-    选择要安装的仓库或最近安装列表入口。
+    选择要安装的仓库或最近安装 skill。
 
     Args:
         repos: 已注册仓库列表。
         paths: 运行时派生路径集合。
 
     Returns:
-        被选中的仓库对象、最近安装标签，或取消选择时的 None。
+        被选中的仓库对象、最近安装记录，或取消选择时的 None。
     """
-    recent_names = load_recent(paths["recent_installs_path"])
-    repo_choices: list[Choice] = [
-        Choice(title=f"{repo.name} ({repo.type.value})", value=repo) for repo in repos
-    ]
-    choices = (
-        [Choice(title=RECENT_LABEL, value=RECENT_LABEL)] if recent_names else []
-    ) + repo_choices
+    recent_refs = load_recent_refs(paths["recent_installs_path"])
+    choices = build_install_source_choices(repos, recent_refs)
     return questionary.select("选择要安装的仓库:", choices=choices).ask()
 
 
-def collect_recent_skills(
+def build_install_source_choices(
+    repos: list[Repository],
+    recent_refs: list[RecentSkillRef],
+) -> list[Choice | Separator]:
+    """构建交互安装第一层菜单，最近安装 skill 可直接选择。"""
+    choices: list[Choice | Separator] = []
+    if recent_refs:
+        choices.append(Separator(RECENT_LABEL))
+        choices.extend(
+            Choice(
+                title=f"  {format_recent_ref_label(ref)}",
+                value=ref,
+            )
+            for ref in recent_refs
+        )
+
+    choices.append(Separator(REPOSITORY_LABEL))
+    repo_choices: list[Choice] = [
+        Choice(title=f"{repo.name} ({repo.type.value})", value=repo) for repo in repos
+    ]
+    choices.extend(repo_choices)
+    return choices
+
+
+def format_recent_ref_label(ref: RecentSkillRef) -> str:
+    """格式化第一层菜单里的最近安装记录。"""
+    if ref.repository_name:
+        return f"{ref.name} ({ref.repository_name})"
+    return ref.name
+
+
+def resolve_recent_skill(
+    ref: RecentSkillRef,
     repos: list[Repository],
     settings: Settings,
-    paths: dict[str, Path],
-) -> list[Skill]:
+    skills_by_repo: dict[str, list[Skill]] | None = None,
+) -> Skill | None:
     """
-    根据最近安装记录从当前已注册仓库中重新汇总 skill。
+    将最近安装记录解析为当前可安装的 Skill。
 
     Args:
+        ref: 最近安装记录。
         repos: 已注册仓库列表。
         settings: SKILLS 运行时配置。
-        paths: 运行时派生路径集合。
+        skills_by_repo: 可选的仓库扫描缓存。
 
     Returns:
-        仍能在当前仓库中找到的最近安装 skill 列表，顺序与最近安装记录一致。
+        找到的 skill；记录已失效时返回 None。
     """
-    recent_names = load_recent(paths["recent_installs_path"])
-    all_skills: dict[str, Skill] = {}
+    repos_by_name = {repo.name: repo for repo in repos}
+    if skills_by_repo is None:
+        skills_by_repo = {}
+
+    def find_skill_in_repo(repo: Repository, skill_name: str) -> Skill | None:
+        if repo.name not in skills_by_repo:
+            skills_by_repo[repo.name] = scan_repository(
+                repo,
+                settings.default_scan_depth,
+                settings.excluded_dirs,
+                log_summary=False,
+            )
+        for skill in skills_by_repo[repo.name]:
+            if skill.name == skill_name:
+                return skill
+        return None
+
+    if ref.repository_name is not None:
+        repo = repos_by_name.get(ref.repository_name)
+        return find_skill_in_repo(repo, ref.name) if repo is not None else None
+
     for repo in repos:
-        for skill in scan_repository(repo, settings.default_scan_depth, settings.excluded_dirs):
-            all_skills.setdefault(skill.name, skill)
-    return [all_skills[name] for name in recent_names if name in all_skills]
+        skill = find_skill_in_repo(repo, ref.name)
+        if skill is not None:
+            return skill
+    return None
 
 
 def select_install_options(settings: Settings) -> tuple[str, str, str] | None:

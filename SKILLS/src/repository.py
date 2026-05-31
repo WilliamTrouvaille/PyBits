@@ -363,7 +363,11 @@ def clone_github_repo(
 
 
 def scan_repository(
-    repo: Repository, max_depth: int = 3, excluded_dirs: set[str] | None = None
+    repo: Repository,
+    max_depth: int = 3,
+    excluded_dirs: set[str] | None = None,
+    *,
+    log_summary: bool = True,
 ) -> list[Skill]:
     """
     扫描仓库中的所有合法 skills（递归扫描）
@@ -375,6 +379,7 @@ def scan_repository(
         repo: 仓库对象
         max_depth: 最大扫描深度
         excluded_dirs: 排除的目录集合
+        log_summary: 是否输出扫描结果摘要日志
     """
     # 确定扫描路径
     scan_path = (
@@ -399,7 +404,8 @@ def scan_repository(
                 skills.append(skill)
                 logger.debug(f"发现 skill: {skill.name}")
 
-    logger.info(f"扫描仓库 {repo.name}，发现 {len(skills)} 个合法 skills")
+    if log_summary:
+        logger.info(f"扫描仓库 {repo.name}，发现 {len(skills)} 个合法 skills")
     return skills
 
 

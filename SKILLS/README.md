@@ -214,14 +214,14 @@ SKILLS favorite remove grill-with-docs
 
 ### 最近安装（recent）
 
-每次安装成功后，被安装 skill 的名字会记录到 `.recent_installs.json`（去重，最新在前，最多 100 条）。
+每次安装成功后，被安装 skill 的名字和可选来源仓库会记录到 `.recent_installs.json`（去重，最新在前，最多 100 条）。
 
 ```bash
 SKILLS recent
 ```
 
-交互式安装（`SKILLS install`）的仓库选择列表顶部会出现 `[最近安装]` 快捷入口，
-可直接从最近安装过的 skills 中挑选。
+交互式安装（`SKILLS install`）的第一层菜单会把最近安装过的 skills 直接列在 `[最近安装]` 分组下，
+选中后可直接进入安装参数确认；仓库安装入口列在 `[从仓库安装]` 分组下。
 
 ## 配置文件
 

@@ -7,6 +7,8 @@ from __future__ import annotations
 import argparse
 
 from .constants import (
+    DEFAULT_DOWNLOAD_BACKOFF_SECONDS,
+    DEFAULT_DOWNLOAD_RETRIES,
     DEFAULT_LANGUAGE,
     DEFAULT_MODEL_VERSION,
     DEFAULT_POLL_INTERVAL_SECONDS,
@@ -42,6 +44,21 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_POLL_INTERVAL_SECONDS,
         help=f"Polling interval in seconds (default: {DEFAULT_POLL_INTERVAL_SECONDS}).",
+    )
+    parser.add_argument(
+        "--download-retries",
+        type=int,
+        default=DEFAULT_DOWNLOAD_RETRIES,
+        help=f"Download retries after the first attempt (default: {DEFAULT_DOWNLOAD_RETRIES}).",
+    )
+    parser.add_argument(
+        "--download-backoff",
+        type=float,
+        default=DEFAULT_DOWNLOAD_BACKOFF_SECONDS,
+        help=(
+            "Initial download retry backoff in seconds "
+            f"(default: {DEFAULT_DOWNLOAD_BACKOFF_SECONDS})."
+        ),
     )
     parser.add_argument(
         "--model-version",

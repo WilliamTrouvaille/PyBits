@@ -23,30 +23,52 @@ from rich.progress import (
 from _shared.utils.trash import soft_delete
 
 from .constants import MAX_UNZIPPED_SIZE_BYTES, REQUEST_TIMEOUT_SECONDS
-from .models import PTMError
+from .models import PTMDownloadError, PTMError
 
 
 def download_zip(url: str, dest_path: Path, proxy: str | None = None) -> None:
-    """Download a MinerU result zip file."""
+    """Download a MinerU result zip file, resuming a previous partial download."""
 
     proxies = {"http": proxy, "https": proxy} if proxy else None
+    part_path = _partial_download_path(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"下载结果 zip: {dest_path.name}")
 
     try:
+        existing_size = _partial_size(part_path)
+        headers = {"Range": f"bytes={existing_size}-"} if existing_size else None
+
+        if existing_size:
+            logger.info(f"检测到未完成下载，将从 {existing_size} bytes 继续")
+
         with requests.get(
             url,
             stream=True,
+            headers=headers,
             proxies=proxies,
             timeout=REQUEST_TIMEOUT_SECONDS,
         ) as response:
-            if response.status_code < 200 or response.status_code >= 300:
-                raise PTMError(
-                    f"Download failed: HTTP {response.status_code}",
-                    "Check network connection and try again.",
+            if response.status_code == 416:
+                _reset_partial_download(part_path)
+                raise PTMDownloadError(
+                    "Download resume failed: HTTP 416",
+                    "Partial zip was reset; PTM will retry from the beginning.",
+                    retryable=True,
+                    refresh_url=True,
                 )
 
+            if response.status_code < 200 or response.status_code >= 300:
+                raise _download_http_error(response.status_code)
+
+            mode = "ab" if existing_size and response.status_code == 206 else "wb"
+            completed = existing_size if mode == "ab" else 0
+            if existing_size and response.status_code == 200:
+                logger.warning("下载服务未接受 Range 续传，将重新下载结果 zip")
+                _reset_partial_download(part_path)
+
             total = int(response.headers.get("content-length") or 0)
+            if mode == "ab" and total:
+                total += existing_size
             console = Console(stderr=True)
             with Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -58,19 +80,27 @@ def download_zip(url: str, dest_path: Path, proxy: str | None = None) -> None:
                 transient=True,
                 disable=not sys.stderr.isatty(),
             ) as progress:
-                task_id = progress.add_task("下载结果", total=total or None)
-                with dest_path.open("wb") as file:
+                task_id = progress.add_task(
+                    "下载结果",
+                    total=total or None,
+                    completed=completed,
+                )
+                with part_path.open(mode) as file:
                     for chunk in response.iter_content(chunk_size=1024 * 1024):
                         if not chunk:
                             continue
                         file.write(chunk)
                         progress.update(task_id, advance=len(chunk))
+
+        part_path.replace(dest_path)
     except PTMError:
         raise
     except requests.RequestException as exc:
-        raise PTMError(
+        raise PTMDownloadError(
             f"Download failed: {exc}",
-            "Check network connection and try again.",
+            "Check network connection; PTM will retry if attempts remain.",
+            retryable=True,
+            refresh_url=True,
         ) from exc
     except OSError as exc:
         raise PTMError(
@@ -79,6 +109,40 @@ def download_zip(url: str, dest_path: Path, proxy: str | None = None) -> None:
         ) from exc
 
     logger.info("结果 zip 下载完成")
+
+
+def _partial_download_path(dest_path: Path) -> Path:
+    return dest_path.with_name(f"{dest_path.name}.part")
+
+
+def _partial_size(part_path: Path) -> int:
+    try:
+        return part_path.stat().st_size
+    except FileNotFoundError:
+        return 0
+    except OSError as exc:
+        raise PTMError(
+            f"Cannot inspect partial zip file: {part_path}",
+            f"Check output directory permissions. Details: {exc}",
+        ) from exc
+
+
+def _reset_partial_download(part_path: Path) -> None:
+    if not part_path.exists():
+        return
+    moved_path = soft_delete(part_path, "ptm-partial-download")
+    logger.debug(f"未完成 zip 已软删除: {part_path} -> {moved_path}")
+
+
+def _download_http_error(status_code: int) -> PTMDownloadError:
+    retryable = status_code in {403, 404, 408, 425, 429} or status_code >= 500
+    refresh_url = status_code in {403, 404, 408, 425, 429} or status_code >= 500
+    return PTMDownloadError(
+        f"Download failed: HTTP {status_code}",
+        "Check network connection; PTM will retry if attempts remain.",
+        retryable=retryable,
+        refresh_url=refresh_url,
+    )
 
 
 def extract_markdown(

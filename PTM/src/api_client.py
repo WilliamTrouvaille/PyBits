@@ -133,7 +133,6 @@ class MinerUAPIClient:
                 "Use --poll-interval with a positive integer.",
             )
 
-        url = f"{API_BASE_URL}{BATCH_RESULT_ENDPOINT_TEMPLATE.format(batch_id=batch_id)}"
         deadline = time.monotonic() + timeout
         last_state = ""
         console = Console(stderr=True)
@@ -157,8 +156,7 @@ class MinerUAPIClient:
                         "Try increasing --timeout or check PDF complexity.",
                     )
 
-                data = self._request_json("GET", url)
-                result = self._extract_first_result(data)
+                result = self._get_batch_result(batch_id)
                 state = str(result.get("state") or "pending")
 
                 if state != last_state:
@@ -187,6 +185,39 @@ class MinerUAPIClient:
                     logger.warning(f"未知任务状态，将继续轮询: {state}")
 
                 time.sleep(min(poll_interval, max(deadline - time.monotonic(), 0.1)))
+
+    def refresh_result_zip_url(self, batch_id: str) -> str:
+        """Fetch the current zip URL for an already-created MinerU batch."""
+
+        logger.info(f"重新拉取 MinerU 结果 URL: batch_id={batch_id}")
+        result = self._get_batch_result(batch_id)
+        state = str(result.get("state") or "pending")
+
+        if state in SUCCESS_STATES:
+            zip_url = str(result.get("full_zip_url") or "")
+            if not zip_url:
+                raise PTMError(
+                    "API processing finished but zip URL is missing",
+                    "Try again later or contact MinerU support.",
+                )
+            return zip_url
+
+        if state in FAILED_STATES:
+            message = str(result.get("err_msg") or result.get("message") or "unknown error")
+            raise PTMError(
+                f"API processing failed: {message}",
+                "Check PDF format and try again.",
+            )
+
+        raise PTMError(
+            f"API processing result is not ready: {state}",
+            "Wait and try again, or rerun PTM for this PDF.",
+        )
+
+    def _get_batch_result(self, batch_id: str) -> dict[str, Any]:
+        url = f"{API_BASE_URL}{BATCH_RESULT_ENDPOINT_TEMPLATE.format(batch_id=batch_id)}"
+        data = self._request_json("GET", url)
+        return self._extract_first_result(data)
 
     def _request_json(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         try:
