@@ -1,4 +1,4 @@
-"""安装逻辑"""
+"""SKILLS 的安装执行逻辑。"""
 
 from __future__ import annotations
 
@@ -43,10 +43,7 @@ def install_skill(
     project_dir: Path | None = None,
 ) -> list[InstallResult]:
     """
-    安装 skill 到目标目录
-    1. 确定目标路径
-    2. 检查是否已存在（覆盖提示）
-    3. 根据 mode 复制或链接
+    安装 skill 到一个或多个 agent 的目标目录。
 
     Args:
         skill: Skill 对象
@@ -56,130 +53,214 @@ def install_skill(
         settings: 配置对象，提供各 agent 的安装目录
         force: 是否强制覆盖
         project_dir: 项目目录（用于项目级安装）
+
+    Returns:
+        每个目标 agent 的安装结果。
     """
-    # 确定目标 agent 列表
     agents = list(settings.agents) if agent == "all" else [agent]
+    return [
+        _install_skill_for_agent(skill, target_agent, scope, mode, settings, force, project_dir)
+        for target_agent in agents
+    ]
 
-    results: list[InstallResult] = []
 
-    # 对每个 agent 执行安装
-    for target_agent in agents:
-        try:
-            target_dir = get_target_dir(target_agent, scope, settings, project_dir)
-        except Exception as e:
-            logger.error(f"安装失败: {skill.name}, agent={target_agent}, 错误: {e}")
-            print(f"✗ 安装失败: {skill.name}, agent={target_agent}, 错误: {e}")
-            results.append(
-                InstallResult(
-                    skill_name=skill.name,
-                    agent=target_agent,
-                    target_path=None,
-                    status="failed",
-                    error=str(e),
-                )
-            )
-            continue
+def _install_skill_for_agent(
+    skill: Skill,
+    target_agent: str,
+    scope: ScopeType,
+    mode: InstallMode,
+    settings: Settings,
+    force: bool,
+    project_dir: Path | None,
+) -> InstallResult:
+    """
+    为单个 agent 执行一次 skill 安装。
 
-        target_path = target_dir / skill.name
+    Args:
+        skill: 待安装的 skill。
+        target_agent: 目标 agent 名。
+        scope: 安装范围。
+        mode: 安装模式。
+        settings: SKILLS 运行时配置。
+        force: 是否强制覆盖已有目标。
+        project_dir: 项目级安装使用的项目目录。
 
-        # 检查是否已存在
-        if (
-            check_existing_skill(target_path)
-            and not force
-            and not prompt_overwrite(skill.name, target_path)
-        ):
-            logger.info(f"跳过安装: {skill.name} -> {target_path}")
-            results.append(
-                InstallResult(
-                    skill_name=skill.name,
-                    agent=target_agent,
-                    target_path=target_path,
-                    status="skipped",
-                )
-            )
-            continue
+    Returns:
+        单个目标 agent 的安装结果。
+    """
+    try:
+        target_dir = get_target_dir(target_agent, scope, settings, project_dir)
+    except Exception as exc:
+        logger.error(f"安装失败: {skill.name}, agent={target_agent}, 错误: {exc}")
+        print(f"✗ 安装失败: {skill.name}, agent={target_agent}, 错误: {exc}")
+        return _failed_install_result(skill.name, target_agent, None, exc)
 
-        # 执行安装
-        try:
-            if mode == InstallMode.COPY:
-                copy_skill(skill.source_path, target_path)
-                logger.info(f"复制 skill: {skill.name} -> {target_path}")
-            else:
-                link_skill(skill.source_path, target_path)
-                logger.info(f"链接 skill: {skill.name} -> {target_path}")
+    target_path = target_dir / skill.name
+    if _should_skip_existing_skill(skill.name, target_path, force):
+        logger.info(f"跳过安装: {skill.name} -> {target_path}")
+        return InstallResult(
+            skill_name=skill.name,
+            agent=target_agent,
+            target_path=target_path,
+            status="skipped",
+        )
 
-            print(f"✓ 安装成功: {skill.name} -> {target_path}")
-            results.append(
-                InstallResult(
-                    skill_name=skill.name,
-                    agent=target_agent,
-                    target_path=target_path,
-                    status="installed",
-                )
-            )
-        except Exception as e:
-            logger.error(f"安装失败: {skill.name}, 错误: {e}")
-            print(f"✗ 安装失败: {skill.name}, 错误: {e}")
+    return _install_skill_to_target(skill, target_agent, target_path, mode)
 
-            # link 模式失败时询问是否改用 copy
-            if (
-                mode == InstallMode.LINK
-                and questionary.confirm("链接创建失败，是否改用复制模式？").ask()
-            ):
-                try:
-                    copy_skill(skill.source_path, target_path)
-                    logger.info(f"复制 skill: {skill.name} -> {target_path}")
-                    print(f"✓ 安装成功（复制模式）: {skill.name} -> {target_path}")
-                    results.append(
-                        InstallResult(
-                            skill_name=skill.name,
-                            agent=target_agent,
-                            target_path=target_path,
-                            status="installed",
-                        )
-                    )
-                except Exception as copy_error:
-                    logger.error(f"复制也失败: {copy_error}")
-                    print(f"✗ 复制也失败: {copy_error}")
-                    results.append(
-                        InstallResult(
-                            skill_name=skill.name,
-                            agent=target_agent,
-                            target_path=target_path,
-                            status="failed",
-                            error=str(copy_error),
-                        )
-                    )
-            else:
-                results.append(
-                    InstallResult(
-                        skill_name=skill.name,
-                        agent=target_agent,
-                        target_path=target_path,
-                        status="failed",
-                        error=str(e),
-                    )
-                )
 
-    return results
+def _should_skip_existing_skill(skill_name: str, target_path: Path, force: bool) -> bool:
+    """
+    判断已有目标 skill 是否应跳过安装。
+
+    Args:
+        skill_name: 待安装 skill 名称。
+        target_path: 目标安装路径。
+        force: 是否强制覆盖。
+
+    Returns:
+        用户拒绝覆盖已有目标时返回 True。
+    """
+    if force or not check_existing_skill(target_path):
+        return False
+    return not prompt_overwrite(skill_name, target_path)
+
+
+def _install_skill_to_target(
+    skill: Skill,
+    target_agent: str,
+    target_path: Path,
+    mode: InstallMode,
+) -> InstallResult:
+    """
+    将 skill 写入已经解析好的目标路径。
+
+    Args:
+        skill: 待安装的 skill。
+        target_agent: 目标 agent 名。
+        target_path: 目标安装路径。
+        mode: 安装模式。
+
+    Returns:
+        安装结果。
+    """
+    try:
+        _apply_install_mode(skill, target_path, mode)
+        logger.info(f"{_install_action_label(mode)} skill: {skill.name} -> {target_path}")
+        print(f"✓ 安装成功: {skill.name} -> {target_path}")
+        return InstallResult(
+            skill_name=skill.name,
+            agent=target_agent,
+            target_path=target_path,
+            status="installed",
+        )
+    except Exception as exc:
+        logger.error(f"安装失败: {skill.name}, 错误: {exc}")
+        print(f"✗ 安装失败: {skill.name}, 错误: {exc}")
+
+        if mode == InstallMode.LINK and _confirm_copy_fallback():
+            return _copy_after_link_failure(skill, target_agent, target_path)
+
+        return _failed_install_result(skill.name, target_agent, target_path, exc)
+
+
+def _apply_install_mode(skill: Skill, target_path: Path, mode: InstallMode) -> None:
+    """
+    按安装模式写入目标路径。
+
+    Args:
+        skill: 待安装的 skill。
+        target_path: 目标安装路径。
+        mode: 安装模式。
+    """
+    if mode == InstallMode.COPY:
+        copy_skill(skill.source_path, target_path)
+        return
+    link_skill(skill.source_path, target_path)
+
+
+def _install_action_label(mode: InstallMode) -> str:
+    """返回用于日志的安装动作名称。"""
+    return "复制" if mode == InstallMode.COPY else "链接"
+
+
+def _confirm_copy_fallback() -> bool:
+    """确认 link 模式失败后是否回退到 copy 模式。"""
+    return bool(questionary.confirm("链接创建失败，是否改用复制模式？").ask())
+
+
+def _copy_after_link_failure(
+    skill: Skill,
+    target_agent: str,
+    target_path: Path,
+) -> InstallResult:
+    """
+    link 模式失败后尝试用 copy 模式完成安装。
+
+    Args:
+        skill: 待安装的 skill。
+        target_agent: 目标 agent 名。
+        target_path: 目标安装路径。
+
+    Returns:
+        copy 回退的安装结果。
+    """
+    try:
+        copy_skill(skill.source_path, target_path)
+        logger.info(f"复制 skill: {skill.name} -> {target_path}")
+        print(f"✓ 安装成功（复制模式）: {skill.name} -> {target_path}")
+        return InstallResult(
+            skill_name=skill.name,
+            agent=target_agent,
+            target_path=target_path,
+            status="installed",
+        )
+    except Exception as copy_error:
+        logger.error(f"复制也失败: {copy_error}")
+        print(f"✗ 复制也失败: {copy_error}")
+        return _failed_install_result(skill.name, target_agent, target_path, copy_error)
+
+
+def _failed_install_result(
+    skill_name: str,
+    agent: str,
+    target_path: Path | None,
+    error: Exception,
+) -> InstallResult:
+    """
+    构造失败安装结果。
+
+    Args:
+        skill_name: 安装失败的 skill 名称。
+        agent: 目标 agent 名。
+        target_path: 失败时已解析出的目标路径；解析目标目录失败时为 None。
+        error: 失败异常。
+
+    Returns:
+        失败状态的安装结果。
+    """
+    return InstallResult(
+        skill_name=skill_name,
+        agent=agent,
+        target_path=target_path,
+        status="failed",
+        error=str(error),
+    )
 
 
 def get_target_dir(
     agent: str, scope: ScopeType, settings: Settings, project_dir: Path | None = None
 ) -> Path:
     """
-    获取目标 skills 目录
-    - 根据 agent 和 scope 从 settings.agents 解析路径
-    - 如果目录不存在，自动创建
+    获取目标 skills 目录。
 
     Args:
-        agent: 目标 agent 名（setting.yaml 的 agents 键）
-        scope: 安装范围
-        settings: 配置对象
-        project_dir: 项目目录（用于项目级安装）
+        agent: 目标 agent 名（setting.yaml 的 agents 键）。
+        scope: 安装范围。
+        settings: 配置对象。
+        project_dir: 项目目录（用于项目级安装）。
 
     Returns:
-        目标 skills 目录路径
+        目标 skills 目录路径。
     """
     agent_config = settings.agents.get(agent)
     if not agent_config:
@@ -197,7 +278,7 @@ def get_target_dir(
         project = project_dir or Path.cwd()
         target_dir = project / configured
 
-        # 检查是否是项目根目录
+        # 项目级安装可能写入任意当前目录，交互确认可避免误装到普通文件夹。
         if not find_project_root(project):
             print(
                 f"警告: 目录 '{project}' 不是项目根目录"
@@ -212,9 +293,11 @@ def get_target_dir(
 
 def copy_skill(source: Path, target: Path) -> None:
     """
-    复制 skill 目录
-    - 使用 shutil.copytree
-    - 覆盖已存在的目录
+    复制 skill 目录到目标位置。
+
+    Args:
+        source: 源 skill 目录。
+        target: 目标 skill 目录。
     """
     if check_existing_skill(target):
         moved_target = soft_delete(target, "skills-install-overwrite")
@@ -225,10 +308,11 @@ def copy_skill(source: Path, target: Path) -> None:
 
 def link_skill(source: Path, target: Path) -> None:
     """
-    创建 skill 链接
-    - Windows: 使用 Junction (subprocess call mklink /J)
-    - Mac/Linux: 使用 symlink (os.symlink)
-    - 错误处理：权限问题，询问是否改用 copy 模式
+    创建指向源 skill 目录的链接。
+
+    Args:
+        source: 源 skill 目录。
+        target: 目标链接路径。
     """
     if check_existing_skill(target):
         moved_target = soft_delete(target, "skills-install-overwrite")
@@ -237,7 +321,7 @@ def link_skill(source: Path, target: Path) -> None:
     system = platform.system()
 
     if system == "Windows":
-        # 使用 Junction
+        # Windows 普通用户更容易创建 Junction，权限要求通常低于目录 symlink。
         subprocess.run(
             ["cmd", "/c", "mklink", "/J", str(target), str(source)],
             check=True,
@@ -245,20 +329,25 @@ def link_skill(source: Path, target: Path) -> None:
         )
         logger.info(f"创建 Junction: {target} -> {source}")
     else:
-        # Mac/Linux 使用 symlink
         os.symlink(source, target)
         logger.info(f"创建 symlink: {target} -> {source}")
 
 
 def check_existing_skill(target: Path) -> bool:
-    """检查目标位置是否已存在 skill"""
+    """检查目标位置是否已存在 skill。"""
     return target.exists() or target.is_symlink()
 
 
 def prompt_overwrite(skill_name: str, target: Path) -> bool:
     """
-    提示用户是否覆盖已存在的 skill
-    返回 True 表示继续，False 表示取消
+    提示用户是否覆盖已存在的 skill。
+
+    Args:
+        skill_name: 待安装 skill 名称。
+        target: 已存在的目标路径。
+
+    Returns:
+        用户确认覆盖时返回 True。
     """
     print(f"\n警告：Skill '{skill_name}' 已存在于 {target}")
-    return questionary.confirm("是否覆盖？").ask()
+    return bool(questionary.confirm("是否覆盖？").ask())

@@ -27,10 +27,10 @@ def selected_pages_from_args(
     """
 
     if args.dpi <= 0:
-        parser.error("--dpi must be greater than 0")
+        parser.error("--dpi 必须大于 0")
     if args.page is not None:
         if args.page <= 0:
-            parser.error("--page must be greater than 0")
+            parser.error("--page 必须大于 0")
         return [args.page]
     if args.pages:
         try:

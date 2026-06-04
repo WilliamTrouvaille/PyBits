@@ -1,1 +1,1 @@
-"""Shared helpers for PyBits tools."""
+"""PyBits 各工具共用的辅助代码包。"""

@@ -1,1 +1,1 @@
-"""CTA package internals."""
+"""CTA 工具实现包。"""

@@ -1,4 +1,4 @@
-"""JSON 持久化操作"""
+"""SKILLS 仓库配置的 JSON 持久化操作。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .models import Repository, RepositoryType
 
 
 def load_local_config(repos_local_json_path: Path) -> dict:
-    """加载 .repos.local.json（路径映射表）"""
+    """加载 `.repos.local.json` 路径映射表。"""
     if not repos_local_json_path.exists():
         return {"github_cache_paths": {}, "local_paths": {}}
 
@@ -32,7 +32,7 @@ def load_local_config(repos_local_json_path: Path) -> dict:
 
 
 def save_local_config(data: dict, repos_local_json_path: Path) -> None:
-    """保存 .repos.local.json（路径映射表），使用原子写入"""
+    """使用原子写入保存 `.repos.local.json` 路径映射表。"""
     lock = FileLock(f"{repos_local_json_path}.lock")
     try:
         with lock:
@@ -169,7 +169,7 @@ def save_repositories(
 
 
 def add_repository(repo: Repository, repos_json_path: Path, repos_local_json_path: Path) -> None:
-    """添加新仓库（检查重复）"""
+    """添加新仓库并拒绝重复名称。"""
     repos = load_repositories(repos_json_path, repos_local_json_path)
 
     # 检查是否已存在
@@ -205,7 +205,7 @@ def update_repository(repo: Repository, repos_json_path: Path, repos_local_json_
 
 
 def remove_repository(name: str, repos_json_path: Path, repos_local_json_path: Path) -> bool:
-    """移除指定仓库"""
+    """移除指定仓库记录。"""
     repos = load_repositories(repos_json_path, repos_local_json_path)
     original_count = len(repos)
 
@@ -223,7 +223,7 @@ def remove_repository(name: str, repos_json_path: Path, repos_local_json_path: P
 def get_repository(
     name: str, repos_json_path: Path, repos_local_json_path: Path
 ) -> Repository | None:
-    """根据名称获取仓库"""
+    """根据名称获取仓库记录。"""
     repos = load_repositories(repos_json_path, repos_local_json_path)
     for repo in repos:
         if repo.name == name:
@@ -232,5 +232,5 @@ def get_repository(
 
 
 def repository_exists(name: str, repos_json_path: Path, repos_local_json_path: Path) -> bool:
-    """检查仓库是否已注册"""
+    """检查仓库是否已注册。"""
     return get_repository(name, repos_json_path, repos_local_json_path) is not None

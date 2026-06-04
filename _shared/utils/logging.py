@@ -1,4 +1,4 @@
-"""Shared loguru setup for PyBits tools."""
+"""PyBits 工具共享的 loguru 初始化逻辑。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,19 @@ def setup_tool_logger(
     retention_days: int = 30,
     console_level: str | None = None,
 ) -> None:
-    """Configure console and rotating file logging for a PyBits tool."""
+    """
+    为单个 PyBits 工具配置控制台日志和按日轮转的文件日志。
+
+    Args:
+        tool_name: 工具名称，例如 `ptm` 或 `PTP`。
+        logs_dir: 工具包内的默认日志目录。
+        verbose: 是否提高控制台日志详细程度。
+        retention_days: 旧日志软删除保留天数；小于等于 0 时不清理。
+        console_level: 显式控制台日志级别；未传入时按 verbose 推断。
+
+    Raises:
+        RuntimeError: 所有候选日志目录都不可写。
+    """
     normalized_name = _normalize_tool_name(tool_name)
     log_file_name = f"{normalized_name}_{{time:YYYY-MM-DD}}.log"
 
@@ -48,15 +60,23 @@ def setup_tool_logger(
         except OSError:
             continue
 
-    raise RuntimeError(f"No writable log directory found for {tool_name}")
+    raise RuntimeError(f"未找到可写日志目录: {tool_name}")
 
 
 def _normalize_tool_name(tool_name: str) -> str:
+    """
+    规范化工具名，使其适合用于日志文件名。
+    """
+
     normalized = re.sub(r"[^a-zA-Z0-9_-]+", "_", tool_name.strip().lower())
     return normalized.strip("_") or "pybits"
 
 
 def _candidate_logs_dirs(tool_name: str, logs_dir: Path | str | None) -> list[Path]:
+    """
+    按优先级生成日志目录候选列表。
+    """
+
     candidates: list[Path] = []
 
     origin_dir = _install_origin()
@@ -77,6 +97,10 @@ def _candidate_logs_dirs(tool_name: str, logs_dir: Path | str | None) -> list[Pa
 
 
 def _install_origin() -> Path | None:
+    """
+    从 editable/direct URL 安装元数据中读取原始项目目录。
+    """
+
     try:
         distribution = importlib_metadata.distribution("pybits")
     except importlib_metadata.PackageNotFoundError:
@@ -103,6 +127,10 @@ def _install_origin() -> Path | None:
 
 
 def _soft_delete_old_logs(logs_dir: Path, normalized_name: str, retention_days: int) -> None:
+    """
+    将超过保留期的旧日志软删除。
+    """
+
     if retention_days <= 0:
         return
 

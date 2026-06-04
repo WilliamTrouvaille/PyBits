@@ -1,4 +1,4 @@
-"""Download and extraction helpers for MinerU zip results."""
+"""MinerU 结果 zip 的下载和解压辅助函数。"""
 
 from __future__ import annotations
 
@@ -28,7 +28,18 @@ from .models import PTMDownloadError, PTMError
 
 
 def download_zip(url: str, dest_path: Path, proxy: str | None = None) -> None:
-    """Download a MinerU result zip file, resuming a previous partial download."""
+    """
+    下载 MinerU 结果 zip，并尽量续传已有的 `.part` 文件。
+
+    Args:
+        url: MinerU 结果 zip URL。
+        dest_path: 最终 zip 文件路径。
+        proxy: 可选 HTTP(S) 代理 URL。
+
+    Raises:
+        PTMDownloadError: 网络或 HTTP 下载失败，且可能允许上层重试。
+        PTMError: 本地文件写入或续传状态检查失败。
+    """
 
     proxies = {"http": proxy, "https": proxy} if proxy else None
     part_path = _partial_download_path(dest_path)
@@ -52,8 +63,8 @@ def download_zip(url: str, dest_path: Path, proxy: str | None = None) -> None:
             if response.status_code == 416:
                 _reset_partial_download(part_path)
                 raise PTMDownloadError(
-                    "Download resume failed: HTTP 416",
-                    "Partial zip was reset; PTM will retry from the beginning.",
+                    "续传失败: HTTP 416",
+                    "已重置未完成 zip；PTM 会从头重试。",
                     retryable=True,
                     refresh_url=True,
                 )
@@ -98,21 +109,25 @@ def download_zip(url: str, dest_path: Path, proxy: str | None = None) -> None:
         raise
     except requests.RequestException as exc:
         raise PTMDownloadError(
-            f"Download failed: {_safe_request_error(exc)}",
-            "Check network connection; PTM will retry if attempts remain.",
+            f"下载失败: {_safe_request_error(exc)}",
+            "检查网络连接；如果仍有重试次数，PTM 会自动重试。",
             retryable=True,
             refresh_url=True,
         ) from exc
     except OSError as exc:
         raise PTMError(
-            f"Cannot write zip file: {dest_path}",
-            f"Check output directory permissions. Details: {exc}",
+            f"无法写入 zip 文件: {dest_path}",
+            f"检查输出目录权限。细节: {exc}",
         ) from exc
 
     logger.info("结果 zip 下载完成")
 
 
 def _partial_download_path(dest_path: Path) -> Path:
+    """
+    返回结果 zip 对应的未完成下载路径。
+    """
+
     return dest_path.with_name(f"{dest_path.name}.part")
 
 
@@ -123,12 +138,16 @@ def _partial_size(part_path: Path) -> int:
         return 0
     except OSError as exc:
         raise PTMError(
-            f"Cannot inspect partial zip file: {part_path}",
-            f"Check output directory permissions. Details: {exc}",
+            f"无法检查未完成 zip 文件: {part_path}",
+            f"检查输出目录权限。细节: {exc}",
         ) from exc
 
 
 def _reset_partial_download(part_path: Path) -> None:
+    """
+    将损坏或不可续传的 `.part` 文件软删除。
+    """
+
     if not part_path.exists():
         return
     moved_path = soft_delete(part_path, "ptm-partial-download")
@@ -136,11 +155,15 @@ def _reset_partial_download(part_path: Path) -> None:
 
 
 def _download_http_error(status_code: int) -> PTMDownloadError:
+    """
+    将下载 HTTP 状态码转换为可恢复性明确的错误。
+    """
+
     retryable = status_code in {403, 404, 408, 425, 429} or status_code >= 500
     refresh_url = status_code in {403, 404, 408, 425, 429} or status_code >= 500
     return PTMDownloadError(
-        f"Download failed: HTTP {status_code}",
-        "Check network connection; PTM will retry if attempts remain.",
+        f"下载失败: HTTP {status_code}",
+        "检查网络连接；如果仍有重试次数，PTM 会自动重试。",
         retryable=retryable,
         refresh_url=refresh_url,
     )
@@ -154,14 +177,29 @@ def extract_markdown(
     keep_images: bool,
     keep_zip: bool,
 ) -> Path:
-    """Extract full.md from a MinerU result zip and return the final markdown path."""
+    """
+    从 MinerU 结果 zip 中提取 `full.md` 并生成最终 Markdown 文件。
+
+    Args:
+        zip_path: MinerU 结果 zip 路径。
+        out_dir: 输出目录。
+        output_name: 不含扩展名的输出基础名。
+        keep_images: 是否复制 zip 内的 images/ 目录。
+        keep_zip: 是否保留下载的 zip 文件。
+
+    Returns:
+        最终 Markdown 文件路径。
+
+    Raises:
+        PTMError: zip 损坏、内容不安全、缺少 full.md 或输出路径冲突。
+    """
 
     out_dir.mkdir(parents=True, exist_ok=True)
     markdown_path = out_dir / f"{output_name}.md"
     if markdown_path.exists():
         raise PTMError(
-            f"Output file already exists: {markdown_path}",
-            "Run again later or choose another output directory.",
+            f"输出文件已存在: {markdown_path}",
+            "稍后重新运行，或选择其他输出目录。",
         )
     if keep_images:
         _validate_images_target(out_dir)
@@ -179,15 +217,15 @@ def extract_markdown(
                     _copy_images(temp_dir, out_dir)
     except zipfile.BadZipFile as exc:
         raise PTMError(
-            f"Invalid zip file: {zip_path}",
-            "Try again later or contact MinerU support.",
+            f"zip 文件无效: {zip_path}",
+            "稍后重试，或联系 MinerU 支持。",
         ) from exc
     except PTMError:
         raise
     except OSError as exc:
         raise PTMError(
-            f"Failed to extract markdown: {exc}",
-            "Check output directory permissions and try again.",
+            f"提取 Markdown 失败: {exc}",
+            "检查输出目录权限后重试。",
         ) from exc
 
     if not keep_zip:
@@ -202,24 +240,32 @@ def extract_markdown(
 
 
 def _validate_zip(archive: zipfile.ZipFile) -> None:
+    """
+    校验 zip 解压规模和成员路径，避免危险路径写入。
+    """
+
     total_size = 0
     for info in archive.infolist():
         total_size += info.file_size
         if total_size > MAX_UNZIPPED_SIZE_BYTES:
             raise PTMError(
-                "Zip content too large after extraction",
-                "Contact MinerU support or try a smaller PDF.",
+                "zip 解压后内容过大",
+                "联系 MinerU 支持，或换用更小的 PDF。",
             )
 
         path = Path(info.filename)
         if path.is_absolute() or ".." in path.parts:
             raise PTMError(
-                "Unsafe zip content detected",
-                "Contact MinerU support and do not extract this file manually.",
+                "检测到不安全的 zip 内容",
+                "联系 MinerU 支持，不要手动解压该文件。",
             )
 
 
 def _find_full_markdown(temp_dir: Path) -> Path:
+    """
+    在临时解压目录中查找 MinerU 输出的 `full.md`。
+    """
+
     root_markdown = temp_dir / "full.md"
     if root_markdown.is_file():
         return root_markdown
@@ -229,12 +275,16 @@ def _find_full_markdown(temp_dir: Path) -> Path:
         return matches[0]
 
     raise PTMError(
-        "full.md not found in MinerU result zip",
-        "Try again later or contact MinerU support.",
+        "MinerU 结果 zip 中未找到 full.md",
+        "稍后重试，或联系 MinerU 支持。",
     )
 
 
 def _copy_images(temp_dir: Path, out_dir: Path) -> None:
+    """
+    将解压结果中的 images/ 目录复制到输出目录。
+    """
+
     image_dir = temp_dir / "images"
     if not image_dir.is_dir():
         candidates = [path for path in temp_dir.rglob("images") if path.is_dir()]
@@ -250,15 +300,23 @@ def _copy_images(temp_dir: Path, out_dir: Path) -> None:
 
 
 def _validate_images_target(out_dir: Path) -> None:
+    """
+    确认输出目录中尚不存在 images/ 目标。
+    """
+
     target = out_dir / "images"
     if target.exists() or target.is_symlink():
         raise PTMError(
-            f"images/ directory already exists: {target}",
-            "Remove it or disable --images.",
+            f"images/ 目录已存在: {target}",
+            "移除该目录，或禁用 --images。",
         )
 
 
 def _safe_request_error(exc: requests.RequestException) -> str:
+    """
+    生成不会泄露签名 URL 查询串的请求错误摘要。
+    """
+
     text = str(exc)
     request = getattr(exc, "request", None)
     url = getattr(request, "url", None)
@@ -268,6 +326,10 @@ def _safe_request_error(exc: requests.RequestException) -> str:
 
 
 def _redact_url(url: str) -> str:
+    """
+    将 URL 缩减到 scheme 和 host，移除路径与查询串。
+    """
+
     parts = urlsplit(url)
     if not parts.scheme or not parts.netloc:
         return "[redacted-url]"

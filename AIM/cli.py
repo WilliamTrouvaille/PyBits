@@ -31,7 +31,7 @@ def main() -> int:
     setup_tool_logger("aim", logs_dir=LOGS_DIR, verbose=args.verbose, retention_days=30)
 
     if args.limit < 1:
-        parser.error("--limit must be greater than 0")
+        parser.error("--limit 必须大于 0")
 
     try:
         since = parse_since(args.since)
@@ -45,7 +45,7 @@ def main() -> int:
         )
     except (OSError, ValueError) as exc:
         logger.error(str(exc))
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"错误: {exc}", file=sys.stderr)
         return 1
 
     summary = {
@@ -57,8 +57,8 @@ def main() -> int:
     if args.json:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     else:
-        print(f"AIM index written: {out_dir}")
-        print(f"Records: {len(records)}")
+        print(f"AIM 索引已写入: {out_dir}")
+        print(f"记录数: {len(records)}")
     return 0
 
 

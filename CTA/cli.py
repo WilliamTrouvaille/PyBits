@@ -29,12 +29,12 @@ def main() -> int:
     target_path = cwd / "AGENTS.md"
 
     if not source_path.is_file():
-        print(f"ERROR: CLAUDE.md not found in {cwd}", file=sys.stderr)
+        print(f"错误: {cwd} 中未找到 CLAUDE.md", file=sys.stderr)
         return 1
     target_exists = target_path.exists() or target_path.is_symlink()
     if target_exists and not args.force:
         print(
-            f"ERROR: AGENTS.md already exists in {cwd}; rerun with --force to overwrite.",
+            f"错误: {cwd} 中已存在 AGENTS.md；如需覆盖，请使用 --force 重新运行。",
             file=sys.stderr,
         )
         return 1
@@ -61,7 +61,7 @@ def main() -> int:
     finally:
         if temp_path is not None and temp_path.exists():
             soft_delete(temp_path, "cta-temp-agents")
-    print(f"Created {target_path}")
+    print(f"已创建 {target_path}")
     return 0
 
 

@@ -1,1 +1,1 @@
-"""Command handler modules for SKILLS."""
+"""SKILLS 各子命令处理器模块。"""

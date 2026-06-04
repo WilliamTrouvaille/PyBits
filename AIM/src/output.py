@@ -38,8 +38,5 @@ def resolve_out_dir(raw_out_dir: str | None) -> Path:
     index_path = out_dir / "index.json"
     candidates_path = out_dir / "candidates.md"
     if index_path.exists() or candidates_path.exists():
-        raise ValueError(
-            f"Output directory already contains AIM results: {out_dir}. "
-            "Choose a new --out-dir."
-        )
+        raise ValueError(f"输出目录已包含 AIM 结果: {out_dir}。请选择新的 --out-dir。")
     return out_dir.resolve()

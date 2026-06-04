@@ -1,4 +1,4 @@
-"""Constants for PTM."""
+"""PTM 使用的常量。"""
 
 from __future__ import annotations
 

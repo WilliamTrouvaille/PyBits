@@ -30,8 +30,8 @@ def prepare_output_dir(input_pdf: Path, out_dir: str | None) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise PTMError(
-            f"Cannot create output directory: {output_dir}",
-            f"Check path permissions and try again. Details: {exc}",
+            f"无法创建输出目录: {output_dir}",
+            f"检查路径权限后重试。细节: {exc}",
         ) from exc
     return output_dir.resolve()
 

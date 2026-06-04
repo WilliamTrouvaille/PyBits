@@ -1,4 +1,4 @@
-"""Skill 校验和解析"""
+"""SKILL.md 元数据校验和解析。"""
 
 from pathlib import Path
 
@@ -8,10 +8,7 @@ from loguru import logger
 
 def validate_skill(skill_dir: Path) -> bool:
     """
-    校验 skill 目录是否合法
-    1. 检查 SKILL.md 是否存在
-    2. 解析 frontmatter
-    3. 验证 name 和 description 字段
+    校验 skill 目录是否包含合法的 `SKILL.md` 元数据。
     """
     skill_md = skill_dir / "SKILL.md"
 
@@ -31,9 +28,13 @@ def validate_skill(skill_dir: Path) -> bool:
 
 def parse_skill_metadata(skill_md_path: Path) -> dict[str, str] | None:
     """
-    解析 SKILL.md 的 frontmatter
-    - 使用 pyyaml 解析
-    - 返回 frontmatter 字典，失败返回 None
+    解析 `SKILL.md` 的 YAML frontmatter。
+
+    Args:
+        skill_md_path: 待解析的 `SKILL.md` 路径。
+
+    Returns:
+        包含必需字段的元数据字典；解析失败或缺少字段时返回 None。
     """
     try:
         content = skill_md_path.read_text(encoding="utf-8")
@@ -45,7 +46,6 @@ def parse_skill_metadata(skill_md_path: Path) -> dict[str, str] | None:
         if not isinstance(metadata, dict):
             return None
 
-        # 验证必需字段
         if "name" not in metadata or "description" not in metadata:
             return None
 
@@ -57,15 +57,18 @@ def parse_skill_metadata(skill_md_path: Path) -> dict[str, str] | None:
 
 def extract_frontmatter(content: str) -> str | None:
     """
-    从 markdown 内容中提取 frontmatter
-    - 查找 --- 包裹的 YAML 块
-    - 返回 YAML 字符串，失败返回 None
+    从 Markdown 内容中提取 YAML frontmatter。
+
+    Args:
+        content: Markdown 文件内容。
+
+    Returns:
+        YAML 字符串；不存在完整 frontmatter 时返回 None。
     """
     lines = content.split("\n")
     if not lines or lines[0].strip() != "---":
         return None
 
-    # 查找第二个 ---
     for i in range(1, len(lines)):
         if lines[i].strip() == "---":
             return "\n".join(lines[1:i])

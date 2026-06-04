@@ -1,4 +1,4 @@
-"""ATP CLI 入口点。"""
+"""ATP 命令行入口。"""
 
 from .src.atp import main
 

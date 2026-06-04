@@ -40,7 +40,7 @@ def default_excluded_dirs() -> set[str]:
 
 
 def default_agents() -> dict[str, dict[str, str]]:
-    """agent 安装目录默认配置（setting.yaml 缺失时的回退值）。"""
+    """Agent 安装目录默认配置（setting.yaml 缺失时的回退值）。"""
     return {
         "claude": {"user": "~/.claude/skills", "project": ".claude/skills"},
         "codex": {"user": "~/.agents/skills", "project": ".agents/skills"},
@@ -49,7 +49,7 @@ def default_agents() -> dict[str, dict[str, str]]:
 
 @dataclass
 class Settings:
-    """SKILLS 配置"""
+    """SKILLS 运行时配置。"""
 
     log_level: str = "INFO"
     log_retention_days: int = 30
@@ -175,7 +175,7 @@ def recursive_find_skills(
     visited_real_paths: set[Path] = set()
 
     def _real_path(path: Path) -> Path:
-        """Return a stable directory identity for duplicate and symlink checks."""
+        """返回用于重复目录和符号链接检测的稳定目录标识。"""
         try:
             return path.resolve()
         except OSError:
@@ -199,7 +199,6 @@ def recursive_find_skills(
             return
         visited_real_paths.add(real_path)
 
-        # 检查当前目录是否包含 SKILL.md
         if (path / "SKILL.md").exists():
             nested_skills_dir = path / "skills"
             if current_depth == 0 and _is_scannable_dir(nested_skills_dir):
@@ -209,10 +208,9 @@ def recursive_find_skills(
                     return
 
             skill_dirs.append(path)
-            # 找到 skill 后不再向下扫描
+            # 找到 skill 后停止下探，避免把 skill 内部支持文件误识别为独立 skill。
             return
 
-        # 递归扫描子目录
         try:
             children = sorted(
                 (item for item in path.iterdir() if _is_scannable_dir(item)),
@@ -248,10 +246,9 @@ def extract_skills_to_flat_structure(
     """
     from .skill import parse_skill_metadata
 
-    # 递归查找所有 skill 目录
     skill_dirs = recursive_find_skills(source_repo_path, max_depth, excluded_dirs)
 
-    # 检测名称冲突
+    # 平铺缓存会按 skill name 建目录，必须先拒绝重名以避免覆盖来源。
     skill_names: dict[str, list[Path]] = {}
     for skill_dir in skill_dirs:
         skill_md = skill_dir / "SKILL.md"
@@ -264,15 +261,12 @@ def extract_skills_to_flat_structure(
             skill_names[skill_name] = []
         skill_names[skill_name].append(skill_dir)
 
-    # 找出冲突的名称
     conflicts = {name: paths for name, paths in skill_names.items() if len(paths) > 1}
     if conflicts:
         return [], conflicts
 
-    # 创建目标缓存目录
     ensure_dir(target_cache_dir)
 
-    # 提取 skills 到平铺结构
     extracted_skills = []
     for skill_dir in skill_dirs:
         skill_md = skill_dir / "SKILL.md"
@@ -286,12 +280,10 @@ def extract_skills_to_flat_structure(
             logger.warning(f"Skill 缺少 name 字段: {skill_dir}")
             continue
 
-        # 清理 skill 名称
         sanitized_name = sanitize_skill_name(skill_name)
         if sanitized_name != skill_name:
             logger.warning(f"Skill 名称包含非法字符, 已清理: '{skill_name}' -> '{sanitized_name}'")
 
-        # 复制到目标目录
         target_skill_dir = target_cache_dir / sanitized_name
         if target_skill_dir.exists():
             moved_dir = soft_delete(target_skill_dir, "skills-extract-overwrite")
@@ -301,7 +293,6 @@ def extract_skills_to_flat_structure(
         extracted_skills.append(target_skill_dir)
         logger.debug(f"提取 skill: {skill_dir} -> {target_skill_dir}")
 
-    # 复制 README.md (如果存在)
     readme_path = source_repo_path / "README.md"
     if readme_path.exists():
         shutil.copy2(readme_path, target_cache_dir / "README.md")

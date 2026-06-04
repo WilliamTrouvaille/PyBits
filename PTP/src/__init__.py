@@ -1,1 +1,1 @@
-"""PTP implementation package."""
+"""PTP 工具实现包。"""

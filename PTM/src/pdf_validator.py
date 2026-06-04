@@ -1,4 +1,4 @@
-"""PDF validation helpers."""
+"""PTM 的 PDF 输入校验辅助函数。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,15 @@ PDF_MAGIC = b"%PDF-"
 
 
 def estimate_pdf_pages(pdf_path: Path) -> int:
-    """Estimate PDF page count without adding a PDF parser dependency."""
+    """
+    在不额外引入 PDF 解析器的前提下估算页数。
+
+    Args:
+        pdf_path: PDF 文件路径。
+
+    Returns:
+        估算页数；无法从 `/Count` 推断时按 `/Page` 计数兜底。
+    """
 
     content = pdf_path.read_bytes()
     counts = [int(match) for match in re.findall(rb"/Count\s+(\d+)", content)]
@@ -27,29 +35,40 @@ def estimate_pdf_pages(pdf_path: Path) -> int:
 
 
 def validate_pdf(pdf_path: str | Path) -> Path:
-    """Validate that the input is a readable PDF within MinerU API limits."""
+    """
+    校验输入文件是可读且符合 MinerU 限制的 PDF。
+
+    Args:
+        pdf_path: 用户传入的 PDF 路径。
+
+    Returns:
+        解析后的绝对 PDF 路径。
+
+    Raises:
+        PTMError: 文件不存在、不可读、不是 PDF 或超过 MinerU 限制。
+    """
 
     path = Path(pdf_path).expanduser()
 
     if not path.exists():
         raise PTMError(
-            f"File not found: {path}",
-            "Check the file path and try again.",
+            f"文件不存在: {path}",
+            "检查文件路径后重试。",
         )
     if not path.is_file():
         raise PTMError(
-            f"Not a file: {path}",
-            "Provide a PDF file path, not a directory.",
+            f"不是文件: {path}",
+            "请提供 PDF 文件路径，而不是目录。",
         )
     if not os.access(path, os.R_OK):
         raise PTMError(
-            f"File is not readable: {path}",
-            "Check file permissions and try again.",
+            f"文件不可读: {path}",
+            "检查文件权限后重试。",
         )
     if path.suffix.lower() != ".pdf":
         raise PTMError(
-            f"Not a valid PDF file: {path}",
-            "Provide a file with .pdf extension and valid PDF format.",
+            f"不是有效 PDF 文件: {path}",
+            "请提供 .pdf 扩展名且格式有效的 PDF 文件。",
         )
 
     try:
@@ -57,22 +76,22 @@ def validate_pdf(pdf_path: str | Path) -> Path:
             magic = file.read(len(PDF_MAGIC))
     except OSError as exc:
         raise PTMError(
-            f"Cannot read file: {path}",
-            f"Check file permissions and try again. Details: {exc}",
+            f"无法读取文件: {path}",
+            f"检查文件权限后重试。细节: {exc}",
         ) from exc
 
     if magic != PDF_MAGIC:
         raise PTMError(
-            f"Not a valid PDF file: {path}",
-            "Provide a file with .pdf extension and valid PDF format.",
+            f"不是有效 PDF 文件: {path}",
+            "请提供 .pdf 扩展名且格式有效的 PDF 文件。",
         )
 
     size_bytes = path.stat().st_size
     if size_bytes > MAX_FILE_SIZE_BYTES:
         size_mb = size_bytes / 1024 / 1024
         raise PTMError(
-            f"File too large: {size_mb:.1f}MB (max {MAX_FILE_SIZE_MB}MB)",
-            "Split the PDF or compress it.",
+            f"文件过大: {size_mb:.1f}MB (上限 {MAX_FILE_SIZE_MB}MB)",
+            "拆分或压缩 PDF 后重试。",
         )
 
     try:
@@ -82,8 +101,8 @@ def validate_pdf(pdf_path: str | Path) -> Path:
     else:
         if page_count > MAX_PAGE_COUNT:
             raise PTMError(
-                f"Too many pages: ~{page_count} pages (max {MAX_PAGE_COUNT})",
-                "Split the PDF or use --page-ranges.",
+                f"页数过多: 约 {page_count} 页 (上限 {MAX_PAGE_COUNT})",
+                "拆分 PDF，或使用 --page-ranges。",
             )
 
     return path.resolve()

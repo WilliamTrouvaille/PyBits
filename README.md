@@ -12,6 +12,7 @@
 | `HELLO` | 探测 Claude Code 和 Codex CLI 连通性。 |
 | `PTM` | 通过 MinerU API 将 PDF 转换为 Markdown。 |
 | `PTP` | 使用 PyMuPDF 将 PDF 页面渲染为 PNG 图片。 |
+| `SWEEP` | 扫描并安全移动过期临时文件和项目临时目录。 |
 | `SKILLS` | 管理 Claude Code / Codex skill 仓库、扫描、安装和更新。 |
 
 ## 安装刷新
@@ -32,6 +33,7 @@ uv run PTP --help
 uv run ATP --help
 uv run AIM --help
 uv run CTA --help
+uv run SWEEP --help
 ```
 
 ## 校验

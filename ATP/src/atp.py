@@ -31,7 +31,6 @@ from .cli_parser import build_parser
 console = Console()
 console_err = Console(stderr=True)
 
-# 工具根目录和缓存目录
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 CACHE_ROOT = TOOL_ROOT / ".paper"
 LOG_DIR = TOOL_ROOT / "logs"
@@ -75,7 +74,6 @@ def get_desktop_path() -> Path:
         桌面路径
     """
     if sys.platform == "win32":
-        # Windows
         import winreg
 
         key = winreg.OpenKey(
@@ -85,9 +83,7 @@ def get_desktop_path() -> Path:
         desktop = winreg.QueryValueEx(key, "Desktop")[0]
         winreg.CloseKey(key)
         return Path(desktop)
-    else:
-        # macOS / Linux
-        return Path.home() / "Desktop"
+    return Path.home() / "Desktop"
 
 
 def check_arxiv_tool() -> bool:
@@ -235,7 +231,6 @@ def download_paper(
     )
     env = build_proxy_env(proxy)
 
-    # 执行命令（带重试）
     logger.info(f"开始下载论文: {arxiv_id}")
     status_console.print("[cyan]正在拉取 arXiv TEX 包...[/cyan]")
 
@@ -250,7 +245,6 @@ def download_paper(
                 env=env,
             )
 
-            # 记录 arxiv-to-prompt 的输出
             if result.stdout:
                 logger.debug(f"arxiv-to-prompt stdout: {result.stdout}")
             if result.stderr:
@@ -266,16 +260,13 @@ def download_paper(
         except subprocess.TimeoutExpired as exc:
             last_error = "网络超时"
             if attempt < 2:
-                status_console.print(
-                    f"[yellow]网络超时，正在重试 ({attempt + 1}/3)...[/yellow]"
-                )
+                status_console.print(f"[yellow]网络超时，正在重试 ({attempt + 1}/3)...[/yellow]")
                 logger.warning(f"网络超时，正在重试 ({attempt + 1}/3)")
                 time.sleep(5)
             else:
                 logger.error("下载超时，已重试 3 次")
                 raise RuntimeError("下载超时，已重试 3 次") from exc
     else:
-        # 所有重试都失败
         raise RuntimeError(f"arxiv-to-prompt 执行失败: {last_error}")
 
     status_console.print("[cyan]正在本地处理...[/cyan]")
@@ -330,7 +321,6 @@ def extract_figures(
         logger.warning(f"图片提取失败: {result.stderr}")
         return []
 
-    # 解析图片路径（每行一个路径）
     figure_paths = [Path(line.strip()) for line in result.stdout.splitlines() if line.strip()]
 
     if not figure_paths:
@@ -339,11 +329,9 @@ def extract_figures(
 
     logger.info(f"找到 {len(figure_paths)} 张图片")
 
-    # 创建输出目录
     figure_output_dir = output_dir / "figure"
     figure_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 并发复制图片
     def copy_figure(src: Path) -> Path:
         dst = figure_output_dir / src.name
         shutil.copy2(src, dst)
@@ -408,7 +396,6 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    # 配置日志
     setup_tool_logger(
         "atp",
         logs_dir=LOG_DIR,
@@ -416,7 +403,6 @@ def main() -> int:
         console_level="INFO" if args.json else "WARNING",
     )
 
-    # 记录用户输入
     logger.info(f"用户输入: {args.arxiv_input}")
     logger.info(f"命令行参数: {sys.argv[1:]}")
 

@@ -1,4 +1,4 @@
-"""CLI entry point for backward compatibility."""
+"""兼容 `python -m SKILLS.src` 的命令行入口。"""
 
 from ..cli import main
 

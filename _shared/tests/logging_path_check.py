@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run python
-"""PyBits tool log path checks."""
+"""PyBits 工具日志路径回归检查。"""
 
 from __future__ import annotations
 

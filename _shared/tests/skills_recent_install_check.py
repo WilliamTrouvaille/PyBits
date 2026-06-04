@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from questionary import Choice, Separator
 
+from SKILLS.src import project_root as skills_project_root
 from SKILLS.src.commands.install import (
     build_install_source_choices,
     format_skill_label,
@@ -155,6 +156,29 @@ class SkillsRecentInstallCheck(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         record_recent_mock.assert_not_called()
+
+    def test_install_origin_finds_checkout_without_repos_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkout_root = Path(temp_dir) / "PyBits"
+            skills_dir = checkout_root / "SKILLS"
+            (skills_dir / "src").mkdir(parents=True)
+            (skills_dir / "cli.py").write_text("", encoding="utf-8")
+            (skills_dir / "README.md").write_text("# SKILLS\n", encoding="utf-8")
+
+            class FakeDistribution:
+                def read_text(self, name: str) -> str | None:
+                    if name != "direct_url.json":
+                        return None
+                    return json.dumps({"url": checkout_root.as_uri()})
+
+            with patch.object(
+                skills_project_root.importlib_metadata,
+                "distribution",
+                return_value=FakeDistribution(),
+            ):
+                project_root = skills_project_root.find_project_root_from_install_origin()
+
+        self.assertEqual(project_root, skills_dir.resolve())
 
 
 if __name__ == "__main__":

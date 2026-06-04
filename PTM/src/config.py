@@ -1,4 +1,4 @@
-"""Token loading and masking helpers."""
+"""PTM token 读取和日志脱敏辅助函数。"""
 
 from __future__ import annotations
 
@@ -13,12 +13,20 @@ DEFAULT_PROJECT_DOTENV_PATH = Path.home() / "CODE" / "PYTHON" / "PyBits" / "PTM"
 
 
 def _clean_token(value: str | None) -> str:
+    """
+    去除 token 外层空白和常见引号。
+    """
+
     if value is None:
         return ""
     return value.strip().strip('"').strip("'").strip()
 
 
 def _load_dotenv_values(path: Path) -> dict[str, str]:
+    """
+    读取简单 `.env` 文件中的键值对。
+    """
+
     if not path.is_file():
         return {}
 
@@ -27,8 +35,8 @@ def _load_dotenv_values(path: Path) -> dict[str, str]:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         raise PTMError(
-            f"Cannot read .env file: {path}",
-            f"Check file permissions and try again. Details: {exc}",
+            f"无法读取 .env 文件: {path}",
+            f"检查文件权限后重试。细节: {exc}",
         ) from exc
 
     for raw_line in lines:
@@ -41,7 +49,9 @@ def _load_dotenv_values(path: Path) -> dict[str, str]:
 
 
 def _candidate_dotenv_paths() -> list[Path]:
-    """Return .env lookup paths using only filesystem locations."""
+    """
+    返回 PTM token 的候选 `.env` 查找路径。
+    """
 
     candidates: list[Path] = []
     cwd = Path.cwd().resolve()
@@ -67,7 +77,9 @@ def _candidate_dotenv_paths() -> list[Path]:
 
 
 def find_dotenv_path() -> Path:
-    """Find the PTM .env file used for token loading."""
+    """
+    查找本次加载 token 使用的 PTM `.env` 文件路径。
+    """
 
     for path in _candidate_dotenv_paths():
         if path.is_file():
@@ -76,7 +88,12 @@ def find_dotenv_path() -> Path:
 
 
 def load_token() -> str:
-    """Load MinerU token from PTM/.env."""
+    """
+    从 PTM `.env` 文件读取 MinerU API token。
+
+    Raises:
+        PTMError: 未找到有效 token。
+    """
 
     dotenv_path = find_dotenv_path()
     token = _clean_token(_load_dotenv_values(dotenv_path).get(DOTENV_TOKEN_NAME))
@@ -84,13 +101,15 @@ def load_token() -> str:
         return token
 
     raise PTMError(
-        "No API token provided",
-        f"Add `{DOTENV_TOKEN_NAME}=your_api_token` to {dotenv_path}.",
+        "未提供 MinerU API token",
+        f"在 {dotenv_path} 中添加 `{DOTENV_TOKEN_NAME}=your_api_token`。",
     )
 
 
 def mask_token(token: str) -> str:
-    """Mask a token for logs."""
+    """
+    为日志输出遮蔽 token。
+    """
 
     clean = _clean_token(token)
     if not clean:

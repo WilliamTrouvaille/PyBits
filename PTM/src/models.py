@@ -1,10 +1,12 @@
-"""Domain models and exceptions for PTM."""
+"""PTM 的领域模型和异常类型。"""
 
 from __future__ import annotations
 
 
 class PTMError(Exception):
-    """User-facing PTM error with a recovery hint."""
+    """
+    带恢复提示的 PTM 用户可见错误。
+    """
 
     def __init__(self, message: str, hint: str) -> None:
         super().__init__(message)
@@ -13,7 +15,9 @@ class PTMError(Exception):
 
 
 class PTMDownloadError(PTMError):
-    """Download failure that may be safe to retry."""
+    """
+    表示可能可以安全重试的下载失败。
+    """
 
     def __init__(
         self,

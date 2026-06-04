@@ -1,9 +1,4 @@
-"""
-File: project_root.py
-Author: trouva
-Date: 2026-06-03
-Description: SKILLS 项目根目录发现辅助函数。
-"""
+"""SKILLS 项目根目录发现辅助函数。"""
 
 from __future__ import annotations
 
@@ -15,12 +10,13 @@ from urllib.parse import unquote, urlparse
 
 def find_skills_project_root() -> Path:
     """
-    查找 SKILLS 项目根目录
-    优先从 CWD 向上查找 .repos.json 或 SKILLS/.repos.json
-    如果找不到，回退到代码所在目录
+    查找 SKILLS 项目根目录。
+
+    优先从当前工作目录向上查找 `.repos.json` 或 `SKILLS/.repos.json`；
+    找不到时，再从本地安装 metadata 反查原始 checkout 中的 `SKILLS/` 数据目录。
 
     Returns:
-        SKILLS 项目根目录路径
+        SKILLS 项目根目录路径。
     """
     # 从 CWD 开始向上查找，兼容在 PyBits 根目录执行全局安装的 SKILLS。
     cwd = Path.cwd()
@@ -35,7 +31,7 @@ def find_skills_project_root() -> Path:
     if install_origin:
         return install_origin
 
-    # 回退到 SKILLS 数据目录（向后兼容）
+    # 最后的回退兼容直接从源码树运行且尚未创建 .repos.json 的场景。
     return Path(__file__).parents[1].resolve()
 
 
@@ -71,7 +67,25 @@ def find_project_root_from_install_origin() -> Path | None:
     origin_path = Path(unquote(parsed_url.path)).expanduser()
     candidates = [origin_path / "SKILLS", origin_path]
     for candidate in candidates:
-        if (candidate / ".repos.json").exists():
+        if _is_skills_project_root(candidate):
             return candidate.resolve()
 
     return None
+
+
+def _is_skills_project_root(candidate: Path) -> bool:
+    """
+    判断候选路径是否像原始 checkout 中的 SKILLS 数据目录。
+
+    Args:
+        candidate: 待检查的路径。
+
+    Returns:
+        候选路径包含 SKILLS 源码入口和文档时返回 True。
+    """
+    return (
+        candidate.is_dir()
+        and (candidate / "cli.py").is_file()
+        and (candidate / "src").is_dir()
+        and (candidate / "README.md").is_file()
+    )

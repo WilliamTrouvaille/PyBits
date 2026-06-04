@@ -1,4 +1,4 @@
-"""数据模型定义"""
+"""SKILLS 的仓库、skill 和安装选项数据模型。"""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 class RepositoryType(Enum):
-    """仓库类型"""
+    """仓库来源类型。"""
 
     GITHUB = "github"
     GITHUB_SKILLS = "github_skills"
@@ -15,14 +15,14 @@ class RepositoryType(Enum):
 
 
 class ScopeType(Enum):
-    """安装范围类型"""
+    """skill 安装范围类型。"""
 
     USER = "user"
     PROJECT = "project"
 
 
 class InstallMode(Enum):
-    """安装模式"""
+    """skill 安装模式。"""
 
     COPY = "copy"
     LINK = "link"
@@ -30,7 +30,7 @@ class InstallMode(Enum):
 
 @dataclass
 class Repository:
-    """仓库数据模型"""
+    """已注册仓库的数据模型。"""
 
     name: str
     type: RepositoryType
@@ -42,8 +42,9 @@ class Repository:
 
     def to_dict(self) -> dict:
         """
-        转换为字典（用于 .repos.json）
-        path 和 local_path 始终为 None，实际路径存储在 .repos.local.json
+        转换为写入 `.repos.json` 的字典。
+
+        `path` 和 `local_path` 始终写为 None，实际本机路径存储在 `.repos.local.json`。
         """
         return {
             "name": self.name,
@@ -57,7 +58,7 @@ class Repository:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Repository":
-        """从字典创建"""
+        """从持久化字典创建仓库对象。"""
         return cls(
             name=data["name"],
             type=RepositoryType(data["type"]),
@@ -71,7 +72,7 @@ class Repository:
 
 @dataclass
 class Skill:
-    """Skill 数据模型"""
+    """可安装 skill 的数据模型。"""
 
     name: str
     description: str
@@ -80,7 +81,7 @@ class Skill:
 
     @classmethod
     def from_directory(cls, path: Path, repo_name: str) -> "Skill | None":
-        """从目录创建 Skill"""
+        """从包含 `SKILL.md` 的目录创建 Skill 对象。"""
         from .skill import parse_skill_metadata
 
         skill_md = path / "SKILL.md"

@@ -117,12 +117,12 @@ def _download_result_zip_with_recovery(
 
     if last_error is None:
         raise PTMError(
-            "Download failed for an unknown reason",
-            "Check network connection and try again.",
+            "下载失败，原因未知",
+            "检查网络连接后重试。",
         )
     raise PTMError(
-        f"{last_error.message} after {attempts} attempt(s)",
-        "Check network connection, try --proxy, or rerun PTM later.",
+        f"{last_error.message}，已尝试 {attempts} 次",
+        "检查网络连接、尝试 --proxy，或稍后重新运行 PTM。",
     ) from last_error
 
 
@@ -130,11 +130,11 @@ def _validate_runtime_options(args: argparse.Namespace) -> None:
     timeout = getattr(args, "timeout", 0)
     poll_interval = getattr(args, "poll_interval", 0)
     if timeout <= 0:
-        raise PTMError("Invalid timeout: must be > 0", "Use --timeout with a positive integer.")
+        raise PTMError("--timeout 必须大于 0", "使用正整数作为 --timeout。")
     if poll_interval <= 0:
         raise PTMError(
-            "Invalid poll interval: must be > 0",
-            "Use --poll-interval with a positive integer.",
+            "--poll-interval 必须大于 0",
+            "使用正整数作为 --poll-interval。",
         )
     _validate_download_options(
         getattr(args, "download_retries", DEFAULT_DOWNLOAD_RETRIES),
@@ -145,13 +145,13 @@ def _validate_runtime_options(args: argparse.Namespace) -> None:
 def _validate_download_options(retries: int, initial_backoff: float) -> None:
     if retries < 0:
         raise PTMError(
-            "Invalid download retries: must be >= 0",
-            "Use --download-retries with a non-negative integer.",
+            "--download-retries 必须大于等于 0",
+            "使用非负整数作为 --download-retries。",
         )
     if initial_backoff < 0:
         raise PTMError(
-            "Invalid download backoff: must be >= 0",
-            "Use --download-backoff with a non-negative number.",
+            "--download-backoff 必须大于等于 0",
+            "使用非负数作为 --download-backoff。",
         )
 
 

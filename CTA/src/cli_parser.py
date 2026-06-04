@@ -17,11 +17,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="CTA",
-        description="Create AGENTS.md from CLAUDE.md in the current directory.",
+        description="根据当前目录中的 CLAUDE.md 创建 AGENTS.md。",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite AGENTS.md if it already exists.",
+        help="当 AGENTS.md 已存在时先软删除旧文件再写入。",
     )
     return parser

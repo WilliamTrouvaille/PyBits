@@ -17,32 +17,32 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="AIM",
-        description="Index Claude Code and Codex sessions into redacted candidate memories.",
+        description="只读索引 Claude Code 和 Codex 会话，生成脱敏候选记忆。",
     )
     parser.add_argument(
         "--claude-home",
         default="~/.claude",
-        help="Claude Code home directory (default: ~/.claude).",
+        help="Claude Code 主目录，默认: ~/.claude。",
     )
     parser.add_argument(
         "--codex-home",
         default="~/.codex",
-        help="Codex home directory (default: ~/.codex).",
+        help="Codex 主目录，默认: ~/.codex。",
     )
     parser.add_argument(
         "--since",
-        help="Only include files modified after this date/time, e.g. 2026-05-01.",
+        help="只包含此日期或时间之后修改的文件，例如 2026-05-01。",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=100,
-        help="Maximum number of evidence records to write (default: 100).",
+        help="最多写入的证据记录数，默认: 100。",
     )
     parser.add_argument(
         "--out-dir",
-        help="Output directory. Defaults to .codex/aim/{timestamp}.",
+        help="输出目录，默认: .codex/aim/{timestamp}。",
     )
-    parser.add_argument("--json", action="store_true", help="Print a JSON summary.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose logs.")
+    parser.add_argument("--json", action="store_true", help="输出 JSON 摘要。")
+    parser.add_argument("-v", "--verbose", action="store_true", help="显示详细日志。")
     return parser

@@ -1,10 +1,13 @@
-"""探测引擎"""
+"""执行 Claude Code 和 Codex CLI 的真实连通性探测。"""
 
 from __future__ import annotations
 
 import concurrent.futures
+import platform
 import shutil
+import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +29,112 @@ from .response_normalizer import normalize_claude_response, normalize_codex_resp
 from .schema import AuthSummary, ProbeEnvelope, ServiceResult
 from .time_utils import utc_now
 
+ProbeTask = Callable[[], ServiceResult]
+
+
+def _process_ok_and_status(proc: dict[str, Any]) -> tuple[bool, str]:
+    """
+    根据子进程结果生成 HELLO 的成功标记和状态字符串。
+
+    Args:
+        proc: run_process 返回的进程结果。
+
+    Returns:
+        二元组，第一项为是否成功，第二项为标准状态字符串。
+    """
+    ok = proc["exit_code"] == 0 and not proc["timed_out"]
+    if ok:
+        return True, "pass"
+    return False, "timeout" if proc["timed_out"] else "failed"
+
+
+def _exception_result(service_name: str, error: Exception) -> ServiceResult:
+    """
+    将未预期异常转换为标准服务结果。
+
+    Args:
+        service_name: 正在探测的服务名称。
+        error: 探测过程中捕获的异常。
+
+    Returns:
+        状态为 `exception` 的服务结果。
+    """
+    now = utc_now()
+    return assemble_service_result(
+        service=service_name,
+        ok=False,
+        status="exception",
+        started_at=now,
+        finished_at=now,
+        cli_info={},
+        config={},
+        auth={"checked": False, "ok": None},
+        request=None,
+        response=None,
+        process=None,
+        warnings=[],
+        error=str(error),
+    )
+
+
+def _service_sort_key(service: ServiceResult, requested_services: list[str]) -> int:
+    """
+    按用户请求顺序对结果排序。
+
+    Args:
+        service: 单个服务探测结果。
+        requested_services: 用户请求的标准服务名称列表。
+
+    Returns:
+        服务在请求列表中的索引；未知服务排在末尾。
+    """
+    service_name = "claude" if service["service"] == "claude_code" else service["service"]
+    if service_name in requested_services:
+        return requested_services.index(service_name)
+    return len(requested_services)
+
+
+def _collect_probe_results(
+    services: list[str],
+    probe_map: dict[str, ProbeTask],
+) -> list[ServiceResult]:
+    """
+    并发执行每个服务的探测任务。
+
+    Args:
+        services: 待探测的标准服务名称列表。
+        probe_map: 服务名称到探测函数的映射。
+
+    Returns:
+        每个服务对应的探测结果；异常会转换为标准失败结果。
+    """
+    results: list[ServiceResult] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(services)) as executor:
+        future_to_service = {executor.submit(probe_map[service]): service for service in services}
+        for future in concurrent.futures.as_completed(future_to_service):
+            service_name = future_to_service[future]
+            try:
+                results.append(future.result())
+            except Exception as exc:
+                logger.error(f"探测 {service_name} 失败: {exc}")
+                results.append(_exception_result(service_name, exc))
+    return results
+
+
+def _host_info() -> dict[str, str]:
+    """
+    生成本次探测运行环境摘要。
+
+    Returns:
+        包含操作系统、Python 版本、解释器和当前目录的字典。
+    """
+    return {
+        "os": platform.platform(),
+        "python": sys.version.split()[0],
+        "executable": sys.executable,
+        "cwd": str(Path.cwd()),
+    }
+
 
 def probe_claude(
     timeout: float = DEFAULT_TIMEOUT,
@@ -39,21 +148,21 @@ def probe_claude(
     workdir: Path | None = None,
 ) -> ServiceResult:
     """
-    探测 Claude Code CLI 连通性
+    探测 Claude Code CLI 连通性。
 
     Args:
-        timeout: 超时时间（秒）
-        prompt: 探测提示词
-        tail_chars: 输出尾部字符数
-        verbose: 是否启用详细日志
-        claude_bin: Claude Code 可执行文件名
-        claude_settings: Claude settings.json 文件路径
-        claude_setting_sources: 设置源
-        skip_auth_check: 是否跳过认证检查
-        workdir: 工作目录
+        timeout: 超时时间（秒）。
+        prompt: 探测提示词。
+        tail_chars: 输出尾部字符数。
+        verbose: 是否启用详细日志。
+        claude_bin: Claude Code 可执行文件名。
+        claude_settings: Claude settings.json 文件路径。
+        claude_setting_sources: 设置源。
+        skip_auth_check: 是否跳过认证检查。
+        workdir: 工作目录。
 
     Returns:
-        探测结果字典
+        探测结果字典。
     """
     service_started_at = utc_now()
     logger.debug("开始探测 Claude Code")
@@ -66,10 +175,8 @@ def probe_claude(
         logger.warning(f"未找到 Claude Code CLI: {claude_bin}")
         return missing_cli_result("claude_code", claude_bin, cfg)
 
-    # 获取版本
     version = get_version(exe, [["--version"], ["-v"]])
 
-    # 认证检查
     auth: AuthSummary = {"checked": False, "ok": None}
     if not skip_auth_check:
         auth_res = run_process(
@@ -79,7 +186,6 @@ def probe_claude(
         )
         auth = summarize_auth_check("claude", auth_res)
 
-    # 构建命令
     cmd, warnings = build_claude_command(
         exe=exe,
         prompt=prompt,
@@ -87,21 +193,15 @@ def probe_claude(
         claude_setting_sources=claude_setting_sources,
     )
 
-    # 执行探测
     proc = run_process(cmd, timeout_s=timeout, cwd=workdir)
 
-    # 解析响应
     response = normalize_claude_response(proc["stdout"])
 
-    # 确定状态
-    ok = proc["exit_code"] == 0 and not proc["timed_out"]
-    status = "pass" if ok else ("timeout" if proc["timed_out"] else "failed")
+    ok, status = _process_ok_and_status(proc)
     logger.debug(f"Claude Code 探测完成，状态: {ok}")
 
-    # 构建进程结果
     process = build_process_result(proc, cmd, tail_chars, include_raw=False)
 
-    # 组装最终结果
     return assemble_service_result(
         service="claude_code",
         ok=ok,
@@ -141,23 +241,23 @@ def probe_codex(
     base_workdir: Path | None = None,
 ) -> ServiceResult:
     """
-    探测 Codex CLI 连通性
+    探测 Codex CLI 连通性。
 
     Args:
-        timeout: 超时时间（秒）
-        prompt: 探测提示词
-        tail_chars: 输出尾部字符数
-        verbose: 是否启用详细日志
-        codex_bin: Codex 可执行文件名
-        codex_home: CODEX_HOME 路径
-        codex_config: Codex config.toml 路径
-        codex_profile: Codex profile 名称
-        codex_cd: Codex 执行目录
-        skip_auth_check: 是否跳过认证检查
-        base_workdir: 基础工作目录
+        timeout: 超时时间（秒）。
+        prompt: 探测提示词。
+        tail_chars: 输出尾部字符数。
+        verbose: 是否启用详细日志。
+        codex_bin: Codex 可执行文件名。
+        codex_home: CODEX_HOME 路径。
+        codex_config: Codex config.toml 路径。
+        codex_profile: Codex profile 名称。
+        codex_cd: Codex 执行目录。
+        skip_auth_check: 是否跳过认证检查。
+        base_workdir: 基础工作目录。
 
     Returns:
-        探测结果字典
+        探测结果字典。
     """
     service_started_at = utc_now()
     logger.debug("开始探测 Codex")
@@ -194,10 +294,8 @@ def probe_codex(
     if not cfg_path.exists():
         warnings.append(f"Codex config file does not exist: {cfg_path}")
 
-    # 获取版本
     version = get_version(exe, [["--version"], ["-V"]], env=env)
 
-    # 认证检查
     auth: AuthSummary = {"checked": False, "ok": None}
     if not skip_auth_check:
         auth_res = run_process(
@@ -208,13 +306,11 @@ def probe_codex(
         )
         auth = summarize_auth_check("codex", auth_res)
 
-    # 创建临时目录并执行请求
     with tempfile.TemporaryDirectory(prefix="codex-hello-probe-", ignore_cleanup_errors=True) as td:
         temp_dir = Path(td)
         last_message_path = temp_dir / "last_message.txt"
         codex_cd_path = expand_path(codex_cd) if codex_cd else temp_dir
 
-        # 构建命令
         cmd, cmd_warnings = build_codex_command(
             exe=exe,
             prompt=prompt,
@@ -226,21 +322,15 @@ def probe_codex(
         )
         warnings.extend(cmd_warnings)
 
-        # 执行探测
         proc = run_process(cmd, timeout_s=timeout, cwd=codex_cd_path, env=env)
 
-        # 解析响应
         response = normalize_codex_response(proc["stdout"], last_message_path)
 
-    # 确定状态
-    ok = proc["exit_code"] == 0 and not proc["timed_out"]
-    status = "pass" if ok else ("timeout" if proc["timed_out"] else "failed")
+    ok, status = _process_ok_and_status(proc)
     logger.debug(f"Codex 探测完成，状态: {ok}")
 
-    # 构建进程结果
     process = build_process_result(proc, cmd, tail_chars, include_raw=False)
 
-    # 组装最终结果
     return assemble_service_result(
         service="codex",
         ok=ok,
@@ -284,35 +374,32 @@ def execute_parallel(
     workdir: Path | None = None,
 ) -> ProbeEnvelope:
     """
-    并发执行探测
+    并发执行多个服务的探测。
 
     Args:
-        services: 服务名称列表 ["claude", "codex"]
-        timeout: 超时时间（秒）
-        prompt: 探测提示词
-        tail_chars: 输出尾部字符数
-        verbose: 是否启用详细日志
-        claude_bin: Claude Code 可执行文件名
-        claude_settings: Claude settings.json 文件路径
-        claude_setting_sources: Claude 设置源
-        codex_bin: Codex 可执行文件名
-        codex_home: CODEX_HOME 路径
-        codex_config: Codex config.toml 路径
-        codex_profile: Codex profile 名称
-        codex_cd: Codex 执行目录
-        skip_auth_check: 是否跳过认证检查
-        workdir: 工作目录
+        services: 服务名称列表，例如 ["claude", "codex"]。
+        timeout: 超时时间（秒）。
+        prompt: 探测提示词。
+        tail_chars: 输出尾部字符数。
+        verbose: 是否启用详细日志。
+        claude_bin: Claude Code 可执行文件名。
+        claude_settings: Claude settings.json 文件路径。
+        claude_setting_sources: Claude 设置源。
+        codex_bin: Codex 可执行文件名。
+        codex_home: CODEX_HOME 路径。
+        codex_config: Codex config.toml 路径。
+        codex_profile: Codex profile 名称。
+        codex_cd: Codex 执行目录。
+        skip_auth_check: 是否跳过认证检查。
+        workdir: 工作目录。
 
     Returns:
-        探测结果包装字典
+        探测结果包装字典。
     """
-    import platform
-    import sys
-
     run_started_at = utc_now()
     logger.info(f"并发探测 {len(services)} 个服务")
 
-    probe_map: dict[str, Any] = {
+    probe_map: dict[str, ProbeTask] = {
         "claude": lambda: probe_claude(
             timeout=timeout,
             prompt=prompt,
@@ -339,37 +426,8 @@ def execute_parallel(
         ),
     }
 
-    results: list[ServiceResult] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(services)) as executor:
-        future_to_service = {executor.submit(probe_map[s]): s for s in services}
-        for future in concurrent.futures.as_completed(future_to_service):
-            try:
-                results.append(future.result())
-            except Exception as e:
-                service_name = future_to_service[future]
-                logger.error(f"探测 {service_name} 失败: {e}")
-                results.append(
-                    assemble_service_result(
-                        service=service_name,
-                        ok=False,
-                        status="exception",
-                        started_at=utc_now(),
-                        finished_at=utc_now(),
-                        cli_info={},
-                        config={},
-                        auth={"checked": False, "ok": None},
-                        request=None,
-                        response=None,
-                        process=None,
-                        warnings=[],
-                        error=str(e),
-                    )
-                )
-
-    # 保持结果顺序
-    results.sort(
-        key=lambda x: services.index("claude" if x["service"] == "claude_code" else x["service"])
-    )
+    results = _collect_probe_results(services, probe_map)
+    results.sort(key=lambda item: _service_sort_key(item, services))
 
     ok = all(item.get("ok") is True for item in results)
 
@@ -380,12 +438,7 @@ def execute_parallel(
         "started_at": run_started_at,
         "finished_at": utc_now(),
         "prompt": prompt,
-        "host": {
-            "os": platform.platform(),
-            "python": sys.version.split()[0],
-            "executable": sys.executable,
-            "cwd": str(Path.cwd()),
-        },
+        "host": _host_info(),
         "services": results,
     }
 

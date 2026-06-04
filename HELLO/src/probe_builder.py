@@ -1,4 +1,4 @@
-"""探测命令构建和结果组装"""
+"""构建下游 CLI 探测命令并组装标准结果。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .text_utils import tail_text
 
 def expand_services(values: list[str] | None) -> list[str]:
     """
-    展开服务别名为标准服务名称列表
+    展开服务别名为标准服务名称列表。
 
     Args:
         values: 用户指定的服务名称列表
@@ -41,7 +41,7 @@ def build_claude_command(
     claude_setting_sources: str = "user",
 ) -> tuple[list[str], list[str]]:
     """
-    构建 Claude Code CLI 探测命令
+    构建 Claude Code CLI 探测命令。
 
     Args:
         exe: Claude Code 可执行文件路径
@@ -87,7 +87,7 @@ def build_codex_command(
     codex_home: Path | None = None,
 ) -> tuple[list[str], list[str]]:
     """
-    构建 Codex CLI 探测命令
+    构建 Codex CLI 探测命令。
 
     Args:
         exe: Codex 可执行文件路径
@@ -142,7 +142,7 @@ def build_process_result(
     include_raw: bool = False,
 ) -> dict[str, Any]:
     """
-    构建进程执行结果字典
+    构建进程执行结果字典。
 
     Args:
         proc: run_process 返回的进程结果
@@ -162,9 +162,6 @@ def build_process_result(
         "stderr_bytes": len(proc["stderr"].encode("utf-8", errors="replace")),
     }
 
-    # 根据服务类型决定是否包含 stdout_tail
-    # Claude Code: 只显示 stderr_tail（响应在 response 字段）
-    # Codex: 显示 stdout_tail 和 stderr_tail
     if "stderr" in proc:
         result["stderr_tail"] = tail_text(proc["stderr"], tail_chars)
 
@@ -191,7 +188,7 @@ def assemble_service_result(
     error: str | None = None,
 ) -> ServiceResult:
     """
-    组装标准化的服务探测结果
+    组装标准化的服务探测结果。
 
     Args:
         service: 服务名称

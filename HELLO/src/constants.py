@@ -1,12 +1,9 @@
-"""常量定义"""
+"""集中保存 HELLO 的默认探测参数和脱敏规则。"""
 
-# Schema 版本
 SCHEMA_VERSION = "ai-cli-connectivity-probe/v1"
 
-# 默认提示词（从 "hello？" 改为 "hi?"）
 DEFAULT_PROMPT = "hi?"
 
-# 敏感键提示词
 SECRET_KEY_HINTS = (
     "key",
     "token",
@@ -18,8 +15,6 @@ SECRET_KEY_HINTS = (
     "cookie",
 )
 
-# 默认超时（秒）
 DEFAULT_TIMEOUT = 120.0
 
-# 默认尾部字符数
 DEFAULT_TAIL_CHARS = 4000

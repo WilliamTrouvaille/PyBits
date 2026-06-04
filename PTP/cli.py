@@ -43,17 +43,17 @@ def main() -> int:
         )
     except PTPError as exc:
         logger.error(exc.message)
-        print(f"ERROR: {exc.message}", file=sys.stderr)
-        print(f"HINT: {exc.hint}", file=sys.stderr)
+        print(f"错误: {exc.message}", file=sys.stderr)
+        print(f"提示: {exc.hint}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("ERROR: Interrupted by user", file=sys.stderr)
-        print("HINT: Run the command again when ready.", file=sys.stderr)
+        print("错误: 用户已中断操作", file=sys.stderr)
+        print("提示: 准备好后重新运行命令。", file=sys.stderr)
         return 1
     except Exception:
-        logger.exception("Unexpected error")
-        print("ERROR: Unexpected error", file=sys.stderr)
-        print("HINT: Check the traceback above or rerun with --verbose.", file=sys.stderr)
+        logger.exception("未预期的错误")
+        print("错误: 未预期的错误", file=sys.stderr)
+        print("提示: 查看上方 traceback，或使用 --verbose 重新运行。", file=sys.stderr)
         return 1
 
     for output_file in result.output_files:

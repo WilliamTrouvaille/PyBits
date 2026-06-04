@@ -26,7 +26,7 @@ GITHUB_API_TIMEOUT_SECONDS = 30
 
 @dataclass(frozen=True)
 class GitHubSkillSource:
-    """Parsed GitHub URL pointing at one skill folder or a folder of skills."""
+    """指向单个 skill 目录或 skill 集合目录的 GitHub URL。"""
 
     owner: str
     repo: str
@@ -36,6 +36,7 @@ class GitHubSkillSource:
 
     @property
     def skill_hint(self) -> str:
+        """返回可用于仓库显示名的 skill 名提示。"""
         parts = [part for part in self.path.split("/") if part]
         if parts and parts[-1].lower() == "skill.md":
             parts = parts[:-1]
@@ -111,7 +112,7 @@ def register_github_skills(
     proxy: str | None = None,
     repos_cache_dir: Path | None = None,
 ) -> Repository:
-    """Register one or more GitHub skill URLs as a selected skills repository."""
+    """把一个或多个 GitHub skill URL 注册为精选 skills 仓库。"""
     if not urls:
         raise ValueError("至少需要提供一个 GitHub skill URL")
 
@@ -172,7 +173,7 @@ def github_skills_repository_name(
     sources: list[GitHubSkillSource],
     explicit_name: str | None = None,
 ) -> str:
-    """Derive a stable display name for selected GitHub skills."""
+    """为精选 GitHub skills 仓库生成稳定的显示名。"""
     if explicit_name and explicit_name.strip():
         return explicit_name.strip()
 
@@ -185,7 +186,7 @@ def github_skills_repository_name(
 
 
 def create_staging_dir(cache_dir: Path, label: str) -> Path:
-    """Create a cache-local staging directory that callers can soft-delete."""
+    """创建位于缓存目录内、调用方可软删除的 staging 目录。"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     safe_label = "".join(char if char.isalnum() or char in "-_" else "_" for char in label)
     staging_dir = cache_dir / f"_{safe_label}_{timestamp}_staging"
@@ -209,7 +210,7 @@ def is_github_skill_url(url: str) -> bool:
 
 
 def parse_github_skill_url(url: str) -> GitHubSkillSource:
-    """Parse GitHub tree/blob/raw URLs that point at skill directories."""
+    """解析指向 skill 目录的 GitHub tree、blob 或 raw URL。"""
     parsed = urlparse(url)
     path_parts = [part for part in parsed.path.strip("/").split("/") if part]
 
@@ -238,7 +239,7 @@ def download_github_skill_source(
     target_dir: Path,
     proxy: str | None = None,
 ) -> None:
-    """Download a GitHub directory through the Contents API."""
+    """通过 GitHub Contents API 下载一个 GitHub 目录。"""
     ensure_dir(target_dir)
     proxies = {"http": proxy, "https": proxy} if proxy else None
     api_path = quote(source.path.strip("/"), safe="/")
@@ -255,7 +256,7 @@ def download_github_contents(
     params: dict[str, str] | None = None,
     proxies: dict[str, str] | None = None,
 ) -> None:
-    """Recursively download files returned by the GitHub Contents API."""
+    """递归下载 GitHub Contents API 返回的文件和子目录。"""
     response = requests.get(
         api_url,
         params=params,
@@ -296,7 +297,7 @@ def download_github_file(
     target_path: Path,
     proxies: dict[str, str] | None = None,
 ) -> None:
-    """Download one raw GitHub file."""
+    """下载单个 GitHub raw 文件。"""
     response = requests.get(download_url, proxies=proxies, timeout=GITHUB_API_TIMEOUT_SECONDS)
     if response.status_code < 200 or response.status_code >= 300:
         raise ValueError(f"GitHub 文件下载失败: HTTP {response.status_code} ({download_url})")

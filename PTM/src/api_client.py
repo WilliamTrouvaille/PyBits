@@ -1,4 +1,4 @@
-"""MinerU API client."""
+"""MinerU API 客户端。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,9 @@ from .models import PTMError
 
 
 class MinerUAPIClient:
-    """Client for the MinerU precise parsing API."""
+    """
+    封装 MinerU 精准解析 API 的任务创建、上传和轮询流程。
+    """
 
     def __init__(self, token: str, proxy: str | None = None) -> None:
         self.session = requests.Session()
@@ -44,7 +46,24 @@ class MinerUAPIClient:
         enable_formula: bool,
         page_ranges: str | None,
     ) -> tuple[str, str]:
-        """Create a MinerU batch task and return its id and upload URL."""
+        """
+        创建 MinerU 批量任务并返回任务 ID 与签名上传 URL。
+
+        Args:
+            pdf_path: 待上传 PDF 路径。
+            model_version: MinerU 模型版本。
+            lang: 语言代码。
+            is_ocr: 是否启用 OCR。
+            enable_table: 是否启用表格识别。
+            enable_formula: 是否启用公式识别。
+            page_ranges: 可选页码范围。
+
+        Returns:
+            `(batch_id, signed_upload_url)` 元组。
+
+        Raises:
+            PTMError: API 响应缺少任务信息或上传 URL。
+        """
 
         file_payload: dict[str, Any] = {
             "name": pdf_path.name,
@@ -71,16 +90,16 @@ class MinerUAPIClient:
         task_data = data.get("data")
         if not isinstance(task_data, dict):
             raise PTMError(
-                "Unexpected API response: missing task data",
-                "Try again later or check MinerU API status.",
+                "API 响应缺少任务数据",
+                "稍后重试，或检查 MinerU API 状态。",
             )
 
         batch_id = str(task_data.get("batch_id") or "")
         file_urls = task_data.get("file_urls")
         if not batch_id or not isinstance(file_urls, list) or not file_urls:
             raise PTMError(
-                "Unexpected API response: missing upload URL",
-                "Try again later or check MinerU API status.",
+                "API 响应缺少上传 URL",
+                "稍后重试，或检查 MinerU API 状态。",
             )
 
         signed_upload_url = str(file_urls[0])
@@ -88,7 +107,16 @@ class MinerUAPIClient:
         return batch_id, signed_upload_url
 
     def upload_file(self, signed_url: str, pdf_path: Path) -> None:
-        """Upload a local PDF to the signed upload URL."""
+        """
+        将本地 PDF 上传到 MinerU 返回的签名 URL。
+
+        Args:
+            signed_url: MinerU 返回的签名上传 URL。
+            pdf_path: 本地 PDF 路径。
+
+        Raises:
+            PTMError: 文件读取、网络请求或上传状态码失败。
+        """
 
         logger.info(f"上传 PDF: {pdf_path.name}")
         try:
@@ -101,19 +129,19 @@ class MinerUAPIClient:
                 )
         except requests.RequestException as exc:
             raise PTMError(
-                f"Upload failed: {_safe_request_error(exc)}",
-                "Check network connection and try again.",
+                f"上传失败: {_safe_request_error(exc)}",
+                "检查网络连接后重试。",
             ) from exc
         except OSError as exc:
             raise PTMError(
-                f"Cannot read file for upload: {pdf_path}",
-                f"Check file permissions and try again. Details: {exc}",
+                f"无法读取待上传文件: {pdf_path}",
+                f"检查文件权限后重试。细节: {exc}",
             ) from exc
 
         if response.status_code < 200 or response.status_code >= 300:
             raise PTMError(
-                f"Upload failed: HTTP {response.status_code}",
-                "Check network connection and try again.",
+                f"上传失败: HTTP {response.status_code}",
+                "检查网络连接后重试。",
             )
         logger.info("PDF 上传完成")
 
@@ -124,14 +152,27 @@ class MinerUAPIClient:
         timeout: int,
         poll_interval: int,
     ) -> str:
-        """Poll MinerU until the batch task returns a zip URL."""
+        """
+        轮询 MinerU 批量任务，直到返回结果 zip URL。
+
+        Args:
+            batch_id: MinerU 批量任务 ID。
+            timeout: 最大等待时间，单位秒。
+            poll_interval: 轮询间隔，单位秒。
+
+        Returns:
+            MinerU 结果 zip URL。
+
+        Raises:
+            PTMError: 参数无效、任务失败、超时或结果 URL 缺失。
+        """
 
         if timeout <= 0:
-            raise PTMError("Invalid timeout: must be > 0", "Use --timeout with a positive integer.")
+            raise PTMError("--timeout 必须大于 0", "使用正整数作为 --timeout。")
         if poll_interval <= 0:
             raise PTMError(
-                "Invalid poll interval: must be > 0",
-                "Use --poll-interval with a positive integer.",
+                "--poll-interval 必须大于 0",
+                "使用正整数作为 --poll-interval。",
             )
 
         deadline = time.monotonic() + timeout
@@ -153,8 +194,8 @@ class MinerUAPIClient:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise PTMError(
-                        f"Timeout after {timeout} seconds",
-                        "Try increasing --timeout or check PDF complexity.",
+                        f"等待 MinerU 结果超时: {timeout} 秒",
+                        "尝试增大 --timeout，或检查 PDF 复杂度。",
                     )
 
                 result = self._get_batch_result(batch_id)
@@ -169,8 +210,8 @@ class MinerUAPIClient:
                     zip_url = str(result.get("full_zip_url") or "")
                     if not zip_url:
                         raise PTMError(
-                            "API processing finished but zip URL is missing",
-                            "Try again later or contact MinerU support.",
+                            "API 已处理完成，但缺少结果 zip URL",
+                            "稍后重试，或联系 MinerU 支持。",
                         )
                     logger.info("MinerU 解析完成")
                     return zip_url
@@ -178,8 +219,8 @@ class MinerUAPIClient:
                 if state in FAILED_STATES:
                     message = str(result.get("err_msg") or result.get("message") or "unknown error")
                     raise PTMError(
-                        f"API processing failed: {message}",
-                        "Check PDF format and try again.",
+                        f"API 处理失败: {message}",
+                        "检查 PDF 格式后重试。",
                     )
 
                 if state not in PENDING_STATES:
@@ -188,7 +229,18 @@ class MinerUAPIClient:
                 time.sleep(min(poll_interval, max(deadline - time.monotonic(), 0.1)))
 
     def refresh_result_zip_url(self, batch_id: str) -> str:
-        """Fetch the current zip URL for an already-created MinerU batch."""
+        """
+        为已创建的 MinerU 批量任务重新获取当前结果 zip URL。
+
+        Args:
+            batch_id: MinerU 批量任务 ID。
+
+        Returns:
+            当前可用的结果 zip URL。
+
+        Raises:
+            PTMError: 任务失败、未完成或响应缺少 URL。
+        """
 
         logger.info(f"重新拉取 MinerU 结果 URL: batch_id={batch_id}")
         result = self._get_batch_result(batch_id)
@@ -198,29 +250,37 @@ class MinerUAPIClient:
             zip_url = str(result.get("full_zip_url") or "")
             if not zip_url:
                 raise PTMError(
-                    "API processing finished but zip URL is missing",
-                    "Try again later or contact MinerU support.",
+                    "API 已处理完成，但缺少结果 zip URL",
+                    "稍后重试，或联系 MinerU 支持。",
                 )
             return zip_url
 
         if state in FAILED_STATES:
             message = str(result.get("err_msg") or result.get("message") or "unknown error")
             raise PTMError(
-                f"API processing failed: {message}",
-                "Check PDF format and try again.",
+                f"API 处理失败: {message}",
+                "检查 PDF 格式后重试。",
             )
 
         raise PTMError(
-            f"API processing result is not ready: {state}",
-            "Wait and try again, or rerun PTM for this PDF.",
+            f"API 处理结果尚未就绪: {state}",
+            "等待后重试，或为这个 PDF 重新运行 PTM。",
         )
 
     def _get_batch_result(self, batch_id: str) -> dict[str, Any]:
+        """
+        获取并抽取指定批量任务的第一条结果。
+        """
+
         url = f"{API_BASE_URL}{BATCH_RESULT_ENDPOINT_TEMPLATE.format(batch_id=batch_id)}"
         data = self._request_json("GET", url)
         return self._extract_first_result(data)
 
     def _request_json(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+        """
+        发送 MinerU API 请求并返回通过校验的 JSON 响应。
+        """
+
         try:
             response = self.session.request(
                 method,
@@ -231,30 +291,34 @@ class MinerUAPIClient:
             )
         except requests.RequestException as exc:
             raise PTMError(
-                f"API request failed: {_safe_request_error(exc)}",
-                "Check network connection and try again.",
+                f"API 请求失败: {_safe_request_error(exc)}",
+                "检查网络连接后重试。",
             ) from exc
 
         return self._check_response(response)
 
     def _check_response(self, response: requests.Response) -> dict[str, Any]:
+        """
+        校验 HTTP 状态码和 MinerU 业务状态码。
+        """
+
         if response.status_code == 401:
             raise PTMError(
-                "Invalid or expired token",
-                "Get a new token from https://mineru.net and update PTM/.env.",
+                "MinerU token 无效或已过期",
+                "从 https://mineru.net 获取新 token，并更新 PTM/.env。",
             )
         if response.status_code < 200 or response.status_code >= 300:
             raise PTMError(
-                f"API request failed: HTTP {response.status_code}",
-                "Check network connection and try again.",
+                f"API 请求失败: HTTP {response.status_code}",
+                "检查网络连接后重试。",
             )
 
         try:
             data = response.json()
         except ValueError as exc:
             raise PTMError(
-                "Unexpected API response: not JSON",
-                "Try again later or check MinerU API status.",
+                "API 响应不是 JSON",
+                "稍后重试，或检查 MinerU API 状态。",
             ) from exc
 
         code = data.get("code", 0)
@@ -265,27 +329,31 @@ class MinerUAPIClient:
         code_text = str(code)
         if code_text in {"A0202", "A0211"}:
             raise PTMError(
-                "Invalid or expired token",
-                "Get a new token from https://mineru.net and update PTM/.env.",
+                "MinerU token 无效或已过期",
+                "从 https://mineru.net 获取新 token，并更新 PTM/.env。",
             )
         if code_text == "-60005":
             raise PTMError(
-                "File too large: MinerU rejected the PDF",
-                "Split the PDF or compress it.",
+                "文件过大，MinerU 已拒绝该 PDF",
+                "拆分或压缩 PDF 后重试。",
             )
         if code_text == "-60006":
             raise PTMError(
-                "Too many pages: MinerU rejected the PDF",
-                "Split the PDF or use --page-ranges.",
+                "页数过多，MinerU 已拒绝该 PDF",
+                "拆分 PDF，或使用 --page-ranges。",
             )
 
         raise PTMError(
-            f"API processing failed: {message}",
-            "Check PDF format and try again.",
+            f"API 处理失败: {message}",
+            "检查 PDF 格式后重试。",
         )
 
     @staticmethod
     def _extract_first_result(data: dict[str, Any]) -> dict[str, Any]:
+        """
+        从 MinerU 批量响应中抽取第一份文件结果。
+        """
+
         task_data = data.get("data")
         if not isinstance(task_data, dict):
             return {"state": "pending"}
@@ -303,6 +371,10 @@ class MinerUAPIClient:
 
 
 def _safe_request_error(exc: requests.RequestException) -> str:
+    """
+    生成不会泄露签名 URL 查询串的请求错误摘要。
+    """
+
     text = str(exc)
     request = getattr(exc, "request", None)
     url = getattr(request, "url", None)
@@ -312,6 +384,10 @@ def _safe_request_error(exc: requests.RequestException) -> str:
 
 
 def _redact_url(url: str) -> str:
+    """
+    将 URL 缩减到 scheme 和 host，移除路径与查询串。
+    """
+
     parts = urlsplit(url)
     if not parts.scheme or not parts.netloc:
         return "[redacted-url]"

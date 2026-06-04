@@ -1,0 +1,78 @@
+# SWEEP 默认配置。
+# Cleanup Scope 必须显式声明；SWEEP 只扫描本文件列出的路径。
+
+system_temp:
+  dirs:
+    - "~/TEMP"
+  keep_days: 15
+  allow_dir_candidates: false
+
+downloads:
+  dirs:
+    - "~/Downloads"
+  keep_days: 30
+  allow_dir_candidates: false
+
+projects:
+  roots:
+    - "~/CODE"
+  extra_dirs: []
+  root_markers:
+    - ".git"
+    - "pyproject.toml"
+    - "Makefile"
+    - "main.tex"
+  managed_dirs:
+    - ".codex"
+    - ".claude"
+  temp_dirs:
+    - ".temp"
+    - ".tmp"
+    - "tmp"
+    - "temp"
+  keep_days: 7
+  allow_dir_candidates: true
+  trash_bin_names:
+    - "_trash_bin_"
+  temp_file_name_contains:
+    - ".tmp."
+    - ".temp."
+
+cache:
+  enabled: true
+  dir: "_cache"
+  project_watch_dirs_file: "project_watch_dirs.json"
+  summary_file: "run_summaries.jsonl"
+  ttl_hours: 168
+  validate_project_markers: true
+  validate_watch_dirs_exist: true
+  refresh_missing_projects: true
+
+trash:
+  # 允许使用绝对路径。SWEEP 启动时只检查一次该命令。
+  command:
+    - "/usr/bin/trash"
+  batch_size: 100
+  workers: 4
+  retries: 2
+  retry_backoff_seconds: 0.5
+  fallback_to_soft_delete: true
+
+failure_policy:
+  project_trash_dir_name: ".codex/_trash_bin_"
+  external_trash_dir: "../.codex/_trash_bin_/SWEEP-external"
+  unresolved_manifest: "_cache/unresolved_failures.jsonl"
+  repair_owned_paths: true
+  clear_macos_user_immutable_flag: true
+  exit_nonzero_on_unresolved: true
+
+scan:
+  # 项目根发现、~/TEMP 扫描和 Downloads 扫描共用该递归深度。
+  max_depth: 4
+  workers: 8
+  skip_symlinks: true
+  skip_dirs:
+    - ".git"
+    - ".hg"
+    - ".svn"
+  reject_paths_containing_newline: true

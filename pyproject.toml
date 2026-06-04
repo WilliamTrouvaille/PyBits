@@ -26,6 +26,7 @@ PTP = "PTP.cli:main"
 ATP = "ATP.cli:main"
 AIM = "AIM.cli:main"
 CTA = "CTA.cli:main"
+SWEEP = "SWEEP.cli:main"
 
 [tool.uv]
 package = true
@@ -44,6 +45,7 @@ include = [
     "ATP*",
     "AIM*",
     "CTA*",
+    "SWEEP*",
     "_shared*",
 ]
 exclude = ["SKILLS._repos_cache*"]
