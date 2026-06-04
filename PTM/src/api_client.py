@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
 from loguru import logger
@@ -100,7 +101,7 @@ class MinerUAPIClient:
                 )
         except requests.RequestException as exc:
             raise PTMError(
-                f"Upload failed: {exc}",
+                f"Upload failed: {_safe_request_error(exc)}",
                 "Check network connection and try again.",
             ) from exc
         except OSError as exc:
@@ -230,7 +231,7 @@ class MinerUAPIClient:
             )
         except requests.RequestException as exc:
             raise PTMError(
-                f"API request failed: {exc}",
+                f"API request failed: {_safe_request_error(exc)}",
                 "Check network connection and try again.",
             ) from exc
 
@@ -299,3 +300,19 @@ class MinerUAPIClient:
         if state:
             return {"state": state}
         return {"state": "pending"}
+
+
+def _safe_request_error(exc: requests.RequestException) -> str:
+    text = str(exc)
+    request = getattr(exc, "request", None)
+    url = getattr(request, "url", None)
+    if url:
+        text = text.replace(str(url), _redact_url(str(url)))
+    return text
+
+
+def _redact_url(url: str) -> str:
+    parts = urlsplit(url)
+    if not parts.scheme or not parts.netloc:
+        return "[redacted-url]"
+    return f"{parts.scheme}://{parts.netloc}/[redacted]"

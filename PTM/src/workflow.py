@@ -34,6 +34,7 @@ def convert_pdf_via_api(args: argparse.Namespace) -> Path:
         最终 Markdown 文件路径。
     """
 
+    _validate_runtime_options(args)
     pdf_path = validate_pdf(args.input_pdf)
     output_dir = prepare_output_dir(pdf_path, args.out_dir)
     output_name = build_output_name(pdf_path)
@@ -90,17 +91,7 @@ def _download_result_zip_with_recovery(
     retries: int,
     initial_backoff: float,
 ) -> None:
-    if retries < 0:
-        raise PTMError(
-            "Invalid download retries: must be >= 0",
-            "Use --download-retries with a non-negative integer.",
-        )
-    if initial_backoff < 0:
-        raise PTMError(
-            "Invalid download backoff: must be >= 0",
-            "Use --download-backoff with a non-negative number.",
-        )
-
+    _validate_download_options(retries, initial_backoff)
     attempts = retries + 1
     current_url = result_zip_url
     last_error: PTMDownloadError | None = None
@@ -133,6 +124,35 @@ def _download_result_zip_with_recovery(
         f"{last_error.message} after {attempts} attempt(s)",
         "Check network connection, try --proxy, or rerun PTM later.",
     ) from last_error
+
+
+def _validate_runtime_options(args: argparse.Namespace) -> None:
+    timeout = getattr(args, "timeout", 0)
+    poll_interval = getattr(args, "poll_interval", 0)
+    if timeout <= 0:
+        raise PTMError("Invalid timeout: must be > 0", "Use --timeout with a positive integer.")
+    if poll_interval <= 0:
+        raise PTMError(
+            "Invalid poll interval: must be > 0",
+            "Use --poll-interval with a positive integer.",
+        )
+    _validate_download_options(
+        getattr(args, "download_retries", DEFAULT_DOWNLOAD_RETRIES),
+        getattr(args, "download_backoff", DEFAULT_DOWNLOAD_BACKOFF_SECONDS),
+    )
+
+
+def _validate_download_options(retries: int, initial_backoff: float) -> None:
+    if retries < 0:
+        raise PTMError(
+            "Invalid download retries: must be >= 0",
+            "Use --download-retries with a non-negative integer.",
+        )
+    if initial_backoff < 0:
+        raise PTMError(
+            "Invalid download backoff: must be >= 0",
+            "Use --download-backoff with a non-negative number.",
+        )
 
 
 def _refresh_zip_url_for_retry(

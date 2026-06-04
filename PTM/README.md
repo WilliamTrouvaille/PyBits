@@ -11,7 +11,7 @@ PTM 是一个基于 MinerU 精准解析 API 的 PDF 转 Markdown 命令行工具
 
 ## Token 配置
 
-本项目不使用系统环境变量。PTM 只从 `PTM/.env` 读取 Token：
+PTM 不读取系统环境变量，只从文件系统里的 `PTM/.env` 读取 Token：
 
 ```dotenv
 MINERU_API_TOKEN=your_api_token_here
@@ -19,7 +19,13 @@ MINERU_API_TOKEN=your_api_token_here
 
 `PTM/.env` 已被 git 忽略，请不要提交 API Token。
 
-全局安装后，从任意目录运行 `PTM` 时，工具会优先查找当前目录及其父目录下的 `PTM/.env`；如果不在项目目录内运行，会读取本机 PyBits 仓库中的 `/Users/trouva/CODE/PYTHON/PyBits/PTM/.env`。
+全局安装后，从任意目录运行 `PTM` 时，工具按以下顺序查找第一个存在的 `.env`：
+
+1. 当前工作目录及其每一级父目录下的 `PTM/.env`。
+2. `~/CODE/PYTHON/PyBits/PTM/.env`。
+3. 已安装或当前源码包旁边的 `PTM/.env`。
+
+如果找到 `.env` 但没有 `MINERU_API_TOKEN`，PTM 会继续按“缺少 Token”处理，并在错误提示里显示本次尝试读取的 `.env` 路径。
 
 ## 安装
 
@@ -60,10 +66,10 @@ PTM input.pdf [OPTIONS]
 
 可选参数:
   --out-dir DIR          输出目录，默认与输入 PDF 同目录
-  --timeout SECONDS      总轮询超时时间，默认 300 秒
-  --poll-interval SEC    轮询间隔，默认 3 秒
-  --download-retries N   下载失败后的重试次数，默认 4
-  --download-backoff SEC 下载重试的初始退避秒数，默认 2.0
+  --timeout SECONDS      总轮询超时时间，必须大于 0，默认 300 秒
+  --poll-interval SEC    轮询间隔，必须大于 0，默认 3 秒
+  --download-retries N   首次下载失败后的重试次数，必须不小于 0，默认 4
+  --download-backoff SEC 下载重试的初始退避秒数，必须不小于 0，默认 2.0
   --model-version VER    模型版本：pipeline、vlm 或 MinerU-HTML，默认 vlm
   --lang LANG            语言代码，默认 ch
   --images               保留 MinerU 结果中的 images/ 目录
@@ -87,15 +93,17 @@ PTM input.pdf [OPTIONS]
 <input_name>_PTM_YYYYMMDD_HHMMSS.md
 ```
 
-启用 `--images` 时，PTM 会把 MinerU 结果中的 `images/` 目录复制到输出目录。如果输出目录已存在 `images/`，PTM 会停止并给出提示，不会覆盖已有目录。
+启用 `--images` 时，PTM 会把 MinerU 结果中的 `images/` 目录复制到输出目录。如果输出目录已存在 `images/`，PTM 会在解压前停止并给出提示，不会覆盖已有目录，也不会先写出 Markdown。
 
-未启用 `--keep-zip` 时，PTM 会在成功提取 Markdown 后删除下载的结果 zip。
+启用 `--keep-zip` 时，结果 zip 会保留在输出目录中，文件名与 Markdown 的 stem 相同。未启用 `--keep-zip` 时，PTM 会在成功提取 Markdown 后把下载的结果 zip 软删除到最近的 `.codex/_trash_bin_/`；如果运行目录附近没有 `.codex`，则使用当前工作目录下的 `.codex/_trash_bin_/`。
 
-下载结果 zip 时，PTM 会先写入同目录下的 `.part` 临时文件；如果网络中断，下一次下载重试会通过 HTTP `Range` 从已完成字节继续。下载失败后，PTM 会按指数退避重试，并在每次可重试失败后使用已有 `batch_id` 重新拉取 MinerU 结果 zip URL，避免临时 CDN URL 失效导致整次任务作废。
+下载结果 zip 时，PTM 会先写入同目录下的 `.part` 临时文件。同一次命令内，如果下载失败但仍有重试次数，下一次下载尝试会通过 HTTP `Range` 从已完成字节继续。下载失败后，PTM 会按指数退避重试，并在每次可重试失败后使用已有 `batch_id` 重新拉取 MinerU 结果 zip URL，避免临时 CDN URL 失效导致整次任务作废。重新运行一条新的 `PTM input.pdf` 命令会生成新的时间戳文件名，不会自动续用上一次命令留下的 `.part`。
+
+解压结果 zip 前，PTM 会检查 zip 内路径是否包含绝对路径或 `..`，并限制解压后的总大小不超过 1GB。zip 中没有 `full.md` 时，命令会失败；启用 `--images` 但 zip 中没有 `images/` 目录时，命令只会在 stderr 写入警告，Markdown 仍会正常生成。
 
 ## 错误格式
 
-可预期错误统一输出为：
+PTM 运行时可预期错误输出为：
 
 ```text
 ERROR: File not found: missing.pdf
@@ -111,8 +119,11 @@ HINT: Check the file path and try again.
 - 轮询超时：对复杂 PDF 增大 `--timeout`。
 - 下载失败：先尝试 `--proxy`；必要时增大 `--download-retries` 或 `--download-backoff`。
 
+参数解析错误沿用 `argparse` 默认格式，会输出 `usage: ...` 和 `PTM: error: ...`，不使用上面的 `ERROR` / `HINT` 两行格式。
+
 ## 安全说明
 
-- 不会打印签名上传 URL 或下载 URL。
+- 常规日志不会主动打印签名上传 URL 或下载 URL；网络异常会对请求 URL 做脱敏后再输出。
 - 日志中的 API Token 会脱敏。
 - 上传到 MinerU 签名 URL 时不会附带 Authorization header。
+- PTM 不在本地运行 MinerU 模型；输入 PDF 会上传到 MinerU 服务端处理。

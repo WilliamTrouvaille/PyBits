@@ -113,4 +113,3 @@ def remove_favorite(skill_name: str, repos_cache_dir: Path) -> bool:
     moved = soft_delete(target, "skills-favorite-remove")
     logger.info(f"[用户操作] 移除常用 skill: {skill_name} -> {moved}")
     return True
-

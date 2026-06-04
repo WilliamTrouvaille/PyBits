@@ -89,7 +89,7 @@ def print_result(envelope: dict[str, Any], args: argparse.Namespace) -> int:
     """
     mode = output_mode(args)
     if mode == "raw":
-        print(json.dumps(envelope, ensure_ascii=False, separators=(",", ":")))
+        print(json.dumps(envelope, ensure_ascii=False, indent=2))
         return 0 if args.always_exit_zero else (0 if envelope["ok"] else 1)
     if mode == "compact":
         report_text, ok = build_report(envelope, compact=True)

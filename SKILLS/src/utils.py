@@ -116,7 +116,8 @@ def get_effective_paths(settings: Settings, project_root: Path) -> dict[str, Pat
         "logs_dir": settings.logs_dir or project_root / "logs",
         "repos_json_path": project_root / ".repos.json",
         "repos_local_json_path": project_root / ".repos.local.json",
-        "recent_installs_path": project_root / ".recent_installs.json",
+        "recent_installs_path": project_root / ".recent_installs.local.json",
+        "legacy_recent_installs_path": project_root / ".recent_installs.json",
     }
 
 

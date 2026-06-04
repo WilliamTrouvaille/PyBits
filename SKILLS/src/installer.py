@@ -6,6 +6,7 @@ import os
 import platform
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import questionary
@@ -17,6 +18,21 @@ from .models import InstallMode, ScopeType, Skill
 from .utils import Settings, ensure_dir, find_project_root
 
 
+@dataclass(frozen=True)
+class InstallResult:
+    """单个 agent 目标目录的一次安装结果。"""
+
+    skill_name: str
+    agent: str
+    target_path: Path | None
+    status: str
+    error: str | None = None
+
+    @property
+    def installed(self) -> bool:
+        return self.status == "installed"
+
+
 def install_skill(
     skill: Skill,
     agent: str,
@@ -25,7 +41,7 @@ def install_skill(
     settings: Settings,
     force: bool = False,
     project_dir: Path | None = None,
-) -> None:
+) -> list[InstallResult]:
     """
     安装 skill 到目标目录
     1. 确定目标路径
@@ -44,9 +60,26 @@ def install_skill(
     # 确定目标 agent 列表
     agents = list(settings.agents) if agent == "all" else [agent]
 
+    results: list[InstallResult] = []
+
     # 对每个 agent 执行安装
     for target_agent in agents:
-        target_dir = get_target_dir(target_agent, scope, settings, project_dir)
+        try:
+            target_dir = get_target_dir(target_agent, scope, settings, project_dir)
+        except Exception as e:
+            logger.error(f"安装失败: {skill.name}, agent={target_agent}, 错误: {e}")
+            print(f"✗ 安装失败: {skill.name}, agent={target_agent}, 错误: {e}")
+            results.append(
+                InstallResult(
+                    skill_name=skill.name,
+                    agent=target_agent,
+                    target_path=None,
+                    status="failed",
+                    error=str(e),
+                )
+            )
+            continue
+
         target_path = target_dir / skill.name
 
         # 检查是否已存在
@@ -56,6 +89,14 @@ def install_skill(
             and not prompt_overwrite(skill.name, target_path)
         ):
             logger.info(f"跳过安装: {skill.name} -> {target_path}")
+            results.append(
+                InstallResult(
+                    skill_name=skill.name,
+                    agent=target_agent,
+                    target_path=target_path,
+                    status="skipped",
+                )
+            )
             continue
 
         # 执行安装
@@ -68,6 +109,14 @@ def install_skill(
                 logger.info(f"链接 skill: {skill.name} -> {target_path}")
 
             print(f"✓ 安装成功: {skill.name} -> {target_path}")
+            results.append(
+                InstallResult(
+                    skill_name=skill.name,
+                    agent=target_agent,
+                    target_path=target_path,
+                    status="installed",
+                )
+            )
         except Exception as e:
             logger.error(f"安装失败: {skill.name}, 错误: {e}")
             print(f"✗ 安装失败: {skill.name}, 错误: {e}")
@@ -81,9 +130,38 @@ def install_skill(
                     copy_skill(skill.source_path, target_path)
                     logger.info(f"复制 skill: {skill.name} -> {target_path}")
                     print(f"✓ 安装成功（复制模式）: {skill.name} -> {target_path}")
+                    results.append(
+                        InstallResult(
+                            skill_name=skill.name,
+                            agent=target_agent,
+                            target_path=target_path,
+                            status="installed",
+                        )
+                    )
                 except Exception as copy_error:
                     logger.error(f"复制也失败: {copy_error}")
                     print(f"✗ 复制也失败: {copy_error}")
+                    results.append(
+                        InstallResult(
+                            skill_name=skill.name,
+                            agent=target_agent,
+                            target_path=target_path,
+                            status="failed",
+                            error=str(copy_error),
+                        )
+                    )
+            else:
+                results.append(
+                    InstallResult(
+                        skill_name=skill.name,
+                        agent=target_agent,
+                        target_path=target_path,
+                        status="failed",
+                        error=str(e),
+                    )
+                )
+
+    return results
 
 
 def get_target_dir(
@@ -138,7 +216,7 @@ def copy_skill(source: Path, target: Path) -> None:
     - 使用 shutil.copytree
     - 覆盖已存在的目录
     """
-    if target.exists():
+    if check_existing_skill(target):
         moved_target = soft_delete(target, "skills-install-overwrite")
         logger.info(f"已软删除旧 skill: {target} -> {moved_target}")
 
@@ -152,7 +230,7 @@ def link_skill(source: Path, target: Path) -> None:
     - Mac/Linux: 使用 symlink (os.symlink)
     - 错误处理：权限问题，询问是否改用 copy 模式
     """
-    if target.exists():
+    if check_existing_skill(target):
         moved_target = soft_delete(target, "skills-install-overwrite")
         logger.info(f"已软删除旧 skill: {target} -> {moved_target}")
 
@@ -174,7 +252,7 @@ def link_skill(source: Path, target: Path) -> None:
 
 def check_existing_skill(target: Path) -> bool:
     """检查目标位置是否已存在 skill"""
-    return target.exists()
+    return target.exists() or target.is_symlink()
 
 
 def prompt_overwrite(skill_name: str, target: Path) -> bool:

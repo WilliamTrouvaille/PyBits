@@ -85,14 +85,17 @@ def handle_install(args: argparse.Namespace, settings: Settings, paths: dict[str
     )
 
     for skill_name in args.skills:
-        install_skill(
+        install_results = install_skill(
             available_skills[skill_name], agent, scope, mode, settings, args.force, project_dir
         )
-        record_recent(
-            skill_name,
-            paths["recent_installs_path"],
-            available_skills[skill_name].repository_name,
-        )
+        if install_results and all(result.installed for result in install_results):
+            record_recent(
+                skill_name,
+                paths["recent_installs_path"],
+                available_skills[skill_name].repository_name,
+            )
+        else:
+            return 1
 
     return 0
 
@@ -176,14 +179,17 @@ def interactive_install(settings: Settings, paths: dict[str, Path]) -> int:
         return 1
 
     for skill in selected_skills:
-        install_skill(
+        install_results = install_skill(
             skill,
             agent_value,
             ScopeType(scope_value),
             InstallMode(mode_value),
             settings,
         )
-        record_recent(skill.name, paths["recent_installs_path"], skill.repository_name)
+        if install_results and all(result.installed for result in install_results):
+            record_recent(skill.name, paths["recent_installs_path"], skill.repository_name)
+        else:
+            return 1
 
     return 0
 

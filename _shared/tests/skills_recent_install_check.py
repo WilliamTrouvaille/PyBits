@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import tempfile
 import unittest
@@ -15,11 +16,13 @@ from questionary import Choice, Separator
 from SKILLS.src.commands.install import (
     build_install_source_choices,
     format_skill_label,
+    handle_install,
     resolve_recent_skill,
 )
+from SKILLS.src.installer import InstallResult
 from SKILLS.src.models import Repository, RepositoryType, Skill
 from SKILLS.src.recent import RecentSkillRef, load_recent, load_recent_refs, record_recent
-from SKILLS.src.utils import Settings
+from SKILLS.src.utils import Settings, get_effective_paths
 
 
 def make_repo(name: str) -> Repository:
@@ -36,8 +39,9 @@ def make_repo(name: str) -> Repository:
 class SkillsRecentInstallCheck(unittest.TestCase):
     def test_record_recent_preserves_repository_and_keeps_name_api(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            recent_path = Path(temp_dir) / ".recent_installs.json"
-            recent_path.write_text(
+            recent_path = Path(temp_dir) / ".recent_installs.local.json"
+            legacy_path = Path(temp_dir) / ".recent_installs.json"
+            legacy_path.write_text(
                 json.dumps({"skills": ["shared-skill"]}),
                 encoding="utf-8",
             )
@@ -51,6 +55,7 @@ class SkillsRecentInstallCheck(unittest.TestCase):
             )
             self.assertEqual(load_recent(recent_path), ["shared-skill"])
             self.assertEqual(load_recent_refs(recent_path)[0].repository_name, "repo-b")
+            self.assertTrue(recent_path.is_file())
 
     def test_resolve_recent_skill_prefers_recorded_repository_quietly(self) -> None:
         repos = [make_repo("repo-a"), make_repo("repo-b")]
@@ -60,7 +65,7 @@ class SkillsRecentInstallCheck(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            recent_path = Path(temp_dir) / ".recent_installs.json"
+            recent_path = Path(temp_dir) / ".recent_installs.local.json"
             record_recent("shared-skill", recent_path, "repo-b")
 
             with patch(
@@ -104,6 +109,52 @@ class SkillsRecentInstallCheck(unittest.TestCase):
             include_repository=True,
         )
         self.assertEqual(skill_label, "first-skill (repo-a) - description")
+
+    def test_effective_paths_use_local_recent_file_name(self) -> None:
+        root = Path("/tmp/project/SKILLS")
+        paths = get_effective_paths(Settings(), root)
+
+        self.assertEqual(paths["recent_installs_path"], root / ".recent_installs.local.json")
+        self.assertEqual(paths["legacy_recent_installs_path"], root / ".recent_installs.json")
+
+    def test_failed_install_does_not_record_recent(self) -> None:
+        repo = make_repo("repo-a")
+        skill = Skill("target-skill", "description", Path("/tmp/target"), "repo-a")
+        args = argparse.Namespace(
+            repository="repo-a",
+            skills=["target-skill"],
+            scope="user",
+            agent="codex",
+            mode="copy",
+            project_dir=None,
+            force=False,
+        )
+        paths = {
+            "repos_json_path": Path("/tmp/repos.json"),
+            "repos_local_json_path": Path("/tmp/repos.local.json"),
+            "recent_installs_path": Path("/tmp/.recent_installs.local.json"),
+        }
+
+        with (
+            patch("SKILLS.src.commands.install.get_repository", return_value=repo),
+            patch("SKILLS.src.commands.install.scan_repository", return_value=[skill]),
+            patch(
+                "SKILLS.src.commands.install.install_skill",
+                return_value=[
+                    InstallResult(
+                        skill_name="target-skill",
+                        agent="codex",
+                        target_path=Path("/tmp/target-skill"),
+                        status="skipped",
+                    )
+                ],
+            ),
+            patch("SKILLS.src.commands.install.record_recent") as record_recent_mock,
+        ):
+            exit_code = handle_install(args, Settings(), paths)
+
+        self.assertEqual(exit_code, 1)
+        record_recent_mock.assert_not_called()
 
 
 if __name__ == "__main__":

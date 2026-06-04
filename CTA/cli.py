@@ -5,6 +5,7 @@ CTA 命令行入口。
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 from _shared.utils.trash import soft_delete
@@ -30,7 +31,8 @@ def main() -> int:
     if not source_path.is_file():
         print(f"ERROR: CLAUDE.md not found in {cwd}", file=sys.stderr)
         return 1
-    if target_path.exists() and not args.force:
+    target_exists = target_path.exists() or target_path.is_symlink()
+    if target_exists and not args.force:
         print(
             f"ERROR: AGENTS.md already exists in {cwd}; rerun with --force to overwrite.",
             file=sys.stderr,
@@ -38,9 +40,27 @@ def main() -> int:
         return 1
 
     content = source_path.read_text(encoding="utf-8")
-    if target_path.exists():
-        soft_delete(target_path, "cta-force-agents")
-    target_path.write_text(convert_content(content), encoding="utf-8")
+    converted = convert_content(content)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            delete=False,
+            dir=cwd,
+            prefix=".AGENTS.",
+            suffix=".tmp",
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(converted)
+            temp_file.flush()
+
+        if target_exists:
+            soft_delete(target_path, "cta-force-agents")
+        temp_path.replace(target_path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            soft_delete(temp_path, "cta-temp-agents")
     print(f"Created {target_path}")
     return 0
 

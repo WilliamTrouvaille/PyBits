@@ -1,5 +1,8 @@
 """
-SKILLS 项目根目录发现辅助函数。
+File: project_root.py
+Author: trouva
+Date: 2026-06-03
+Description: SKILLS 项目根目录发现辅助函数。
 """
 
 from __future__ import annotations

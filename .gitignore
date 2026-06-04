@@ -9,6 +9,9 @@ SKILLS/logs/
 SKILLS/tests/
 SKILLS/_repos_cache
 SKILLS/setting.yaml
+SKILLS/.recent_installs.json
+SKILLS/.recent_installs.local.json
+SKILLS/.recent_installs*.lock
 
 ATP/.paper
 
@@ -18,4 +21,3 @@ PTM/.env
 
 PTP/logs/
 PTP/tests/
-

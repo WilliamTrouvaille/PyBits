@@ -23,7 +23,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
   %(prog)s                          Probe both services with compact report (default)
-  %(prog)s --raw                    Output raw JSON
+  %(prog)s codex                    Probe Codex only using service alias
+  %(prog)s claude                   Probe Claude Code only using service alias
+  %(prog)s --raw                    Output formatted raw JSON
   %(prog)s --pretty                 Output formatted JSON (for debugging)
   %(prog)s --service claude         Probe Claude Code only
   %(prog)s cc                       Probe Claude Code using service alias
@@ -35,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode_group.add_argument(
         "--raw",
         action="store_true",
-        help="Output raw probe JSON (for piping and logging)",
+        help="Output formatted raw probe JSON (for piping and logging)",
     )
     mode_group.add_argument(
         "--compact",

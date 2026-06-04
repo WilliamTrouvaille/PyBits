@@ -4,7 +4,7 @@ name = "pybits"
 version = "0.1.0"
 description = "独立 Python 小工具集合"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "loguru>=0.7.3",
     "ruff>=0.15.12",
@@ -36,5 +36,14 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["HELLO*", "SKILLS*", "PTM*", "PTP*", "ATP*", "AIM*", "CTA*", "_shared*"]
+include = [
+    "HELLO*",
+    "SKILLS*",
+    "PTM*",
+    "PTP*",
+    "ATP*",
+    "AIM*",
+    "CTA*",
+    "_shared*",
+]
 exclude = ["SKILLS._repos_cache*"]

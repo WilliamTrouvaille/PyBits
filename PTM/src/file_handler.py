@@ -7,6 +7,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from loguru import logger
@@ -97,7 +98,7 @@ def download_zip(url: str, dest_path: Path, proxy: str | None = None) -> None:
         raise
     except requests.RequestException as exc:
         raise PTMDownloadError(
-            f"Download failed: {exc}",
+            f"Download failed: {_safe_request_error(exc)}",
             "Check network connection; PTM will retry if attempts remain.",
             retryable=True,
             refresh_url=True,
@@ -162,6 +163,8 @@ def extract_markdown(
             f"Output file already exists: {markdown_path}",
             "Run again later or choose another output directory.",
         )
+    if keep_images:
+        _validate_images_target(out_dir)
 
     try:
         with zipfile.ZipFile(zip_path) as archive:
@@ -242,9 +245,30 @@ def _copy_images(temp_dir: Path, out_dir: Path) -> None:
         return
 
     target = out_dir / "images"
-    if target.exists():
+    _validate_images_target(out_dir)
+    shutil.copytree(image_dir, target)
+
+
+def _validate_images_target(out_dir: Path) -> None:
+    target = out_dir / "images"
+    if target.exists() or target.is_symlink():
         raise PTMError(
             f"images/ directory already exists: {target}",
             "Remove it or disable --images.",
         )
-    shutil.copytree(image_dir, target)
+
+
+def _safe_request_error(exc: requests.RequestException) -> str:
+    text = str(exc)
+    request = getattr(exc, "request", None)
+    url = getattr(request, "url", None)
+    if url:
+        text = text.replace(str(url), _redact_url(str(url)))
+    return text
+
+
+def _redact_url(url: str) -> str:
+    parts = urlsplit(url)
+    if not parts.scheme or not parts.netloc:
+        return "[redacted-url]"
+    return f"{parts.scheme}://{parts.netloc}/[redacted]"

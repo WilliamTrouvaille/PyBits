@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -16,7 +17,6 @@ import shutil
 import subprocess
 import sys
 import time
-import argparse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import NoReturn
@@ -206,6 +206,7 @@ def download_paper(
     no_comments: bool,
     no_appendix: bool,
     timeout: int = 90,
+    status_console: Console = console,
 ) -> Path:
     """
     下载并转换论文。
@@ -236,7 +237,7 @@ def download_paper(
 
     # 执行命令（带重试）
     logger.info(f"开始下载论文: {arxiv_id}")
-    console.print("[cyan]正在拉取 arXiv TEX 包...[/cyan]")
+    status_console.print("[cyan]正在拉取 arXiv TEX 包...[/cyan]")
 
     last_error = None
     for attempt in range(3):
@@ -265,7 +266,9 @@ def download_paper(
         except subprocess.TimeoutExpired as exc:
             last_error = "网络超时"
             if attempt < 2:
-                console.print(f"[yellow]网络超时，正在重试 ({attempt + 1}/3)...[/yellow]")
+                status_console.print(
+                    f"[yellow]网络超时，正在重试 ({attempt + 1}/3)...[/yellow]"
+                )
                 logger.warning(f"网络超时，正在重试 ({attempt + 1}/3)")
                 time.sleep(5)
             else:
@@ -275,7 +278,7 @@ def download_paper(
         # 所有重试都失败
         raise RuntimeError(f"arxiv-to-prompt 执行失败: {last_error}")
 
-    console.print("[cyan]正在本地处理...[/cyan]")
+    status_console.print("[cyan]正在本地处理...[/cyan]")
     main_tex = find_main_tex_file(cache_dir)
     if main_tex is None:
         logger.error(f"未找到生成的 .tex 文件，缓存目录: {cache_dir}")
@@ -291,6 +294,8 @@ def extract_figures(
     output_dir: Path,
     no_comments: bool,
     no_appendix: bool,
+    proxy: str | None = None,
+    status_console: Console = console,
 ) -> list[Path]:
     """提取图片路径并并发复制到输出目录。
 
@@ -313,7 +318,13 @@ def extract_figures(
     )
 
     logger.info("开始提取图片路径")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=build_proxy_env(proxy),
+    )
 
     if result.returncode != 0:
         logger.warning(f"图片提取失败: {result.stderr}")
@@ -339,7 +350,7 @@ def extract_figures(
         logger.debug(f"复制图片: {src.name} -> {dst}")
         return dst
 
-    console.print(f"[cyan]正在复制 {len(figure_paths)} 张图片...[/cyan]")
+    status_console.print(f"[cyan]正在复制 {len(figure_paths)} 张图片...[/cyan]")
     with ThreadPoolExecutor(max_workers=4) as executor:
         copied_paths = list(executor.map(copy_figure, figure_paths))
 
@@ -434,6 +445,7 @@ def run_atp_workflow(args: argparse.Namespace) -> int:
         error_exit(str(e))
 
     output_dir = args.out_dir.resolve() if args.out_dir else get_desktop_path()
+    status_console = console_err if args.json else console
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"输出目录: {output_dir}")
 
@@ -452,7 +464,7 @@ def run_atp_workflow(args: argparse.Namespace) -> int:
 
     if cached_tex and not args.force:
         logger.info(f"缓存命中: {cached_tex}")
-        console.print(f"[green]使用缓存: {arxiv_id}[/green]")
+        status_console.print(f"[green]使用缓存: {arxiv_id}[/green]")
         tex_path = cached_tex
     else:
         if args.force:
@@ -467,6 +479,7 @@ def run_atp_workflow(args: argparse.Namespace) -> int:
                 args.proxy,
                 no_comments,
                 args.no_appendix,
+                status_console=status_console,
             )
         except Exception as e:
             error_exit(f"下载失败: {e}")
@@ -474,7 +487,7 @@ def run_atp_workflow(args: argparse.Namespace) -> int:
     output_tex = output_dir / f"{arxiv_id}.tex"
     shutil.copy2(tex_path, output_tex)
     logger.info(f"写入文件: {output_tex}")
-    console.print(f"[green]OK[/green] TEX 文件: {output_tex}")
+    status_console.print(f"[green]OK[/green] TEX 文件: {output_tex}")
 
     figure_paths = None
     if extract_figures_flag:
@@ -485,14 +498,16 @@ def run_atp_workflow(args: argparse.Namespace) -> int:
                 output_dir,
                 no_comments,
                 args.no_appendix,
+                proxy=args.proxy,
+                status_console=status_console,
             )
             if figure_paths:
-                console.print(
+                status_console.print(
                     f"[green]OK[/green] 图片: {len(figure_paths)} 张 -> {output_dir / 'figure'}"
                 )
         except Exception as e:
             logger.warning(f"图片提取失败: {e}")
-            console.print(f"[yellow]警告: 图片提取失败: {e}[/yellow]")
+            status_console.print(f"[yellow]警告: 图片提取失败: {e}[/yellow]")
 
     if args.json:
         manifest = generate_manifest(arxiv_id, output_tex, figure_paths)
@@ -506,7 +521,7 @@ def run_atp_workflow(args: argparse.Namespace) -> int:
         print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
     logger.info("执行成功，退出码 0")
-    console.print("[green]完成[/green]")
+    status_console.print("[green]完成[/green]")
     return 0
 
 

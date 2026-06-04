@@ -1,4 +1,4 @@
-"""最近安装记录（.recent_installs.json）。
+"""最近安装记录（.recent_installs.local.json）。
 
 记录已安装 skill 的名字和可选来源仓库，按 LRU 去重，最新的排在最前，上限 100 条。
 """
@@ -33,15 +33,16 @@ def load_recent(recent_path: Path) -> list[str]:
 
 def load_recent_refs(recent_path: Path) -> list[RecentSkillRef]:
     """加载最近安装的 skill 引用列表（最新在前）。"""
-    if not recent_path.exists():
+    read_path = _recent_read_path(recent_path)
+    if read_path is None:
         return []
 
-    lock = FileLock(f"{recent_path}.lock")
+    lock = FileLock(f"{read_path}.lock")
     try:
-        with lock, open(recent_path, encoding="utf-8") as f:
+        with lock, open(read_path, encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
-        logger.warning(f"最近安装记录格式错误，已忽略: {recent_path}, 错误: {e}")
+        logger.warning(f"最近安装记录格式错误，已忽略: {read_path}, 错误: {e}")
         return []
     except OSError as e:
         logger.warning(f"读取最近安装记录失败: {e}")
@@ -56,6 +57,23 @@ def load_recent_refs(recent_path: Path) -> list[RecentSkillRef]:
         if ref is not None:
             refs.append(ref)
     return refs
+
+
+def _recent_read_path(recent_path: Path) -> Path | None:
+    if recent_path.exists():
+        return recent_path
+
+    legacy_path = _legacy_recent_path(recent_path)
+    if legacy_path is not None and legacy_path.exists():
+        return legacy_path
+
+    return None
+
+
+def _legacy_recent_path(recent_path: Path) -> Path | None:
+    if recent_path.name != ".recent_installs.local.json":
+        return None
+    return recent_path.with_name(".recent_installs.json")
 
 
 def record_recent(
