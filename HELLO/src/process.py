@@ -80,19 +80,24 @@ def run_process(
         }
 
 
-def get_version(exe: str, candidates: list[list[str]]) -> str | None:
+def get_version(
+    exe: str,
+    candidates: list[list[str]],
+    env: dict[str, str] | None = None,
+) -> str | None:
     """
     尝试多种参数组合获取 CLI 工具的版本号
 
     Args:
         exe: 可执行文件路径
         candidates: 参数组合列表，例如 [["--version"], ["-v"]]
+        env: 子进程环境，None 表示继承当前环境
 
     Returns:
         版本号字符串（第一行），获取失败时返回 None
     """
     for extra in candidates:
-        res = run_process([exe, *extra], timeout_s=10)
+        res = run_process([exe, *extra], timeout_s=10, env=env)
         if res["exit_code"] == 0:
             text = (res["stdout"] or res["stderr"] or "").strip()
             if text:

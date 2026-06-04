@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import concurrent.futures
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -21,6 +20,7 @@ from .probe_builder import (
     build_codex_command,
     build_process_result,
 )
+from .probe_env import build_codex_probe_env
 from .process import get_version, run_process
 from .response_normalizer import normalize_claude_response, normalize_codex_response
 from .schema import AuthSummary, ProbeEnvelope, ServiceResult
@@ -175,21 +175,27 @@ def probe_codex(
 
     cfg = config_summary("codex", cfg_path)
 
-    exe = shutil.which(codex_bin)
-    if not exe:
-        logger.warning(f"未找到 Codex CLI: {codex_bin}")
-        return missing_cli_result("codex", codex_bin, cfg)
-
-    env = os.environ.copy()
+    env, checked_dirs = build_codex_probe_env()
     if codex_home_path:
         env["CODEX_HOME"] = str(codex_home_path)
+
+    exe = shutil.which(codex_bin, path=env.get("PATH"))
+    if not exe:
+        logger.warning(f"未找到 Codex CLI: {codex_bin}")
+        return missing_cli_result(
+            "codex",
+            codex_bin,
+            cfg,
+            search_path=env.get("PATH", ""),
+            checked_dirs=checked_dirs,
+        )
 
     warnings: list[str] = []
     if not cfg_path.exists():
         warnings.append(f"Codex config file does not exist: {cfg_path}")
 
     # 获取版本
-    version = get_version(exe, [["--version"], ["-V"]])
+    version = get_version(exe, [["--version"], ["-V"]], env=env)
 
     # 认证检查
     auth: AuthSummary = {"checked": False, "ok": None}

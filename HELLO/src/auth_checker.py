@@ -49,7 +49,14 @@ def summarize_auth_check(name: str, res: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def missing_cli_result(service: str, binary_name: str, cfg: dict[str, Any]) -> dict[str, Any]:
+def missing_cli_result(
+    service: str,
+    binary_name: str,
+    cfg: dict[str, Any],
+    *,
+    search_path: str | None = None,
+    checked_dirs: list[str] | None = None,
+) -> dict[str, Any]:
     """
     生成 CLI 工具缺失时的标准化结果
 
@@ -57,19 +64,33 @@ def missing_cli_result(service: str, binary_name: str, cfg: dict[str, Any]) -> d
         service: 服务名称（"claude_code" 或 "codex"）
         binary_name: 二进制文件名
         cfg: 配置摘要字典
+        search_path: 用于发现 CLI 的 PATH
+        checked_dirs: 额外检查过的候选目录
 
     Returns:
         标准化的探测结果字典，状态为 "missing_cli"
     """
+    cli_info: dict[str, Any] = {
+        "binary": binary_name,
+        "path": None,
+        "version": None,
+    }
+    if search_path is not None:
+        cli_info["search_path"] = search_path
+    if checked_dirs is not None:
+        cli_info["checked_dirs"] = checked_dirs
+
+    warnings = [f"Cannot find `{binary_name}` in PATH."]
+    if search_path is not None:
+        warnings.append(f"Discovery PATH: {search_path or '(empty)'}")
+    if checked_dirs:
+        warnings.append(f"Fallback directories checked: {', '.join(checked_dirs)}")
+
     return {
         "service": service,
         "ok": False,
         "status": "missing_cli",
-        "cli": {
-            "binary": binary_name,
-            "path": None,
-            "version": None,
-        },
+        "cli": cli_info,
         "config": cfg,
         "auth": {
             "checked": False,
@@ -79,7 +100,5 @@ def missing_cli_result(service: str, binary_name: str, cfg: dict[str, Any]) -> d
         "request": None,
         "response": None,
         "process": None,
-        "warnings": [
-            f"Cannot find `{binary_name}` in PATH.",
-        ],
+        "warnings": warnings,
     }
