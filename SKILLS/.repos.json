@@ -55,15 +55,6 @@
       "sources": null
     },
     {
-      "name": "vercel-labs/skills",
-      "type": "github",
-      "url": "https://github.com/vercel-labs/skills.git",
-      "path": null,
-      "local_path": null,
-      "registered_at": "2026-05-16T13:39:16.059497",
-      "sources": null
-    },
-    {
       "name": "mattpocock/skills",
       "type": "github",
       "url": "https://github.com/mattpocock/skills.git",
@@ -99,6 +90,42 @@
       "path": null,
       "local_path": null,
       "registered_at": "2026-05-31T09:29:40.341401",
+      "sources": null
+    },
+    {
+      "name": "ningzimu/codex-ppt-skill",
+      "type": "github",
+      "url": "https://github.com/ningzimu/codex-ppt-skill.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-06-14T19:11:53.939460",
+      "sources": null
+    },
+    {
+      "name": "op7418/guizang-ppt-skill",
+      "type": "github",
+      "url": "https://github.com/op7418/guizang-ppt-skill.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-06-16T17:54:27.909701",
+      "sources": null
+    },
+    {
+      "name": "openclaw/openclaw",
+      "type": "github",
+      "url": "https://github.com/openclaw/openclaw.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-06-25T23:53:11.421955",
+      "sources": null
+    },
+    {
+      "name": "Agents365-ai/zotero-cli-cc",
+      "type": "github",
+      "url": "https://github.com/Agents365-ai/zotero-cli-cc.git",
+      "path": null,
+      "local_path": null,
+      "registered_at": "2026-06-28T17:45:10.752401",
       "sources": null
     }
   ]

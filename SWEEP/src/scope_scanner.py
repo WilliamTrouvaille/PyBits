@@ -13,8 +13,11 @@ from pathlib import Path
 
 from .candidate_rules import project_candidate
 from .config import SweepConfig
+from .filesystem_scan import entry_is_dir, entry_is_file, list_directory_entries, safe_entry_path
 from .models import CandidateGroup, CandidateKind, CleanupCandidate, ProjectEntry, ScopeType
 from .path_rules import is_basic_safe_path, is_expired, is_temp_named_file
+from .project_tree_scanner import scan_temp_tree
+from .trash_bin_scanner import scan_trash_bin_contents
 
 
 @dataclass(frozen=True)
@@ -26,10 +29,25 @@ class ScopeScanOutput:
 
 
 @dataclass(frozen=True)
-class _TreeScanState:
-    candidates: tuple[CleanupCandidate, ...]
-    remaining_after_cleanup: bool
-    all_expired: bool
+class _AgeScopeScan:
+    """年龄型 Cleanup Scope 扫描所需的上下文。"""
+
+    root: Path
+    scope_type: ScopeType
+    keep_days: int
+    reason: str
+    config: SweepConfig
+    now: datetime
+
+
+@dataclass(frozen=True)
+class _ManagedDirScan:
+    """项目受控目录扫描所需的上下文。"""
+
+    managed_dir: Path
+    project_entry: ProjectEntry
+    config: SweepConfig
+    now: datetime
 
 
 def scan_age_scope_files(
@@ -62,39 +80,72 @@ def scan_age_scope_files(
         warnings.append(f"已跳过无效扫描根: {root}")
         return ScopeScanOutput(candidates=[], warnings=warnings)
 
-    candidates: list[CleanupCandidate] = []
-
-    def walk(directory: Path, depth: int) -> None:
-        try:
-            with os.scandir(directory) as entries:
-                for entry in entries:
-                    path = Path(entry.path)
-                    if not is_basic_safe_path(path, config) or entry.is_symlink():
-                        continue
-                    if entry.is_file(follow_symlinks=False):
-                        if is_expired(path, keep_days, now):
-                            candidates.append(
-                                CleanupCandidate(
-                                    path=path.resolve(strict=False),
-                                    scope_type=scope_type,
-                                    group=CandidateGroup.PARTIAL_ITEMS,
-                                    kind=CandidateKind.FILE,
-                                    keep_days=keep_days,
-                                    reason=reason,
-                                    watch_dir=root,
-                                )
-                            )
-                        continue
-                    if entry.is_dir(follow_symlinks=False):
-                        if entry.name in config.scan.skip_dirs:
-                            continue
-                        if depth < config.scan.max_depth:
-                            walk(path, depth + 1)
-        except OSError:
-            return
-
-    walk(root, 0)
+    scan = _AgeScopeScan(
+        root=root,
+        scope_type=scope_type,
+        keep_days=keep_days,
+        reason=reason,
+        config=config,
+        now=now,
+    )
+    candidates = _scan_age_file_tree(scan)
     return ScopeScanOutput(candidates=candidates, warnings=warnings)
+
+
+def _scan_age_file_tree(scan: _AgeScopeScan) -> list[CleanupCandidate]:
+    """
+    栈式扫描年龄型 Cleanup Scope，并只生成文件候选。
+
+    system-temp 和 downloads 范围不能把目录本身变成候选；因此目录条目只作为
+    继续下钻的容器，最终输出始终是 `partial_items` 文件候选。
+    """
+    candidates: list[CleanupCandidate] = []
+    stack: list[tuple[Path, int]] = [(scan.root, 0)]
+    while stack:
+        directory, depth = stack.pop()
+        for entry in list_directory_entries(directory):
+            path = safe_entry_path(entry, scan.config)
+            if path is None:
+                continue
+            candidate = _age_scope_file_candidate(path, entry, scan)
+            if candidate is not None:
+                candidates.append(candidate)
+                continue
+            if _should_descend_age_scope(entry, depth, scan):
+                stack.append((path, depth + 1))
+    return candidates
+
+
+def _age_scope_file_candidate(
+    path: Path,
+    entry: os.DirEntry[str],
+    scan: _AgeScopeScan,
+) -> CleanupCandidate | None:
+    """创建 system-temp/downloads 的过期文件候选。"""
+    if not entry_is_file(entry) or not is_expired(path, scan.keep_days, scan.now):
+        return None
+    return CleanupCandidate(
+        path=path.resolve(strict=False),
+        scope_type=scan.scope_type,
+        group=CandidateGroup.PARTIAL_ITEMS,
+        kind=CandidateKind.FILE,
+        keep_days=scan.keep_days,
+        reason=scan.reason,
+        watch_dir=scan.root,
+    )
+
+
+def _should_descend_age_scope(
+    entry: os.DirEntry[str],
+    depth: int,
+    scan: _AgeScopeScan,
+) -> bool:
+    """判断年龄型 Cleanup Scope 是否可以继续扫描子目录。"""
+    return (
+        entry_is_dir(entry)
+        and entry.name not in scan.config.scan.skip_dirs
+        and depth < scan.config.scan.max_depth
+    )
 
 
 def scan_project(
@@ -119,7 +170,7 @@ def scan_project(
             continue
         if watch_dir.kind == "temp":
             candidates.extend(
-                _scan_temp_tree(
+                scan_temp_tree(
                     watch_dir.path,
                     project_entry,
                     watch_dir.path,
@@ -140,254 +191,94 @@ def _scan_managed_dir(
     now: datetime,
 ) -> list[CleanupCandidate]:
     """扫描项目受控目录，发现内部临时文件、临时目录和 trash bin 内容。"""
-    candidates: list[CleanupCandidate] = []
-
-    def walk(directory: Path, depth: int) -> None:
-        try:
-            with os.scandir(directory) as entries:
-                for entry in entries:
-                    path = Path(entry.path)
-                    if not is_basic_safe_path(path, config) or entry.is_symlink():
-                        continue
-                    if entry.is_file(follow_symlinks=False):
-                        if is_temp_named_file(entry.name, config) and is_expired(
-                            path, config.projects.keep_days, now
-                        ):
-                            candidates.append(
-                                project_candidate(
-                                    path=path,
-                                    group=CandidateGroup.PARTIAL_ITEMS,
-                                    kind=CandidateKind.FILE,
-                                    reason="managed_temp_named_file",
-                                    watch_dir=managed_dir,
-                                    project_entry=project_entry,
-                                    config=config,
-                                )
-                            )
-                        continue
-                    if not entry.is_dir(follow_symlinks=False):
-                        continue
-                    if entry.name in config.scan.skip_dirs:
-                        continue
-                    if entry.name in config.projects.trash_bin_names:
-                        candidates.extend(
-                            _scan_trash_bin_contents(path, project_entry, path, config, now)
-                        )
-                        continue
-                    if entry.name in config.projects.temp_dirs:
-                        candidates.extend(
-                            _scan_temp_tree(
-                                path,
-                                project_entry,
-                                path,
-                                config,
-                                now,
-                                whole_dir_group=CandidateGroup.WHOLE_DIR,
-                            )
-                        )
-                        continue
-                    if depth < config.scan.max_depth:
-                        walk(path, depth + 1)
-        except OSError:
-            return
-
-    walk(managed_dir, 0)
-    return candidates
-
-
-def _scan_trash_bin_contents(
-    trash_dir: Path,
-    project_entry: ProjectEntry,
-    watch_dir: Path,
-    config: SweepConfig,
-    now: datetime,
-) -> list[CleanupCandidate]:
-    """扫描 `_trash_bin_` 内部过期内容，但保留 trash bin 根目录本身。"""
-    candidates: list[CleanupCandidate] = []
-    try:
-        children = list(os.scandir(trash_dir))
-    except OSError:
-        return candidates
-
-    for entry in children:
-        path = Path(entry.path)
-        if not is_basic_safe_path(path, config) or entry.is_symlink():
-            continue
-        if entry.is_file(follow_symlinks=False):
-            if is_expired(path, config.projects.keep_days, now):
-                candidates.append(
-                    project_candidate(
-                        path=path,
-                        group=CandidateGroup.PARTIAL_ITEMS,
-                        kind=CandidateKind.FILE,
-                        reason="trash_bin_expired_file",
-                        watch_dir=watch_dir,
-                        project_entry=project_entry,
-                        config=config,
-                    )
-                )
-            continue
-        if entry.is_dir(follow_symlinks=False):
-            candidates.extend(
-                _scan_temp_tree(
-                    path,
-                    project_entry,
-                    watch_dir,
-                    config,
-                    now,
-                    whole_dir_group=CandidateGroup.PARTIAL_ITEMS,
-                )
-            )
-    return candidates
-
-
-def _scan_temp_tree(
-    root: Path,
-    project_entry: ProjectEntry,
-    watch_dir: Path,
-    config: SweepConfig,
-    now: datetime,
-    *,
-    whole_dir_group: CandidateGroup,
-) -> list[CleanupCandidate]:
-    """扫描项目临时目录树，并返回可移动候选。"""
-    state = _scan_expirable_tree(
-        directory=root,
+    scan = _ManagedDirScan(
+        managed_dir=managed_dir,
         project_entry=project_entry,
-        watch_dir=watch_dir,
         config=config,
         now=now,
-        allow_directory_candidate=config.projects.allow_dir_candidates,
-        whole_dir_group=whole_dir_group,
     )
-    return list(state.candidates)
+    candidates: list[CleanupCandidate] = []
+    stack: list[tuple[Path, int]] = [(managed_dir, 0)]
+    while stack:
+        directory, depth = stack.pop()
+        for entry in list_directory_entries(directory):
+            entry_candidates, descend_dir = _scan_managed_entry(entry, depth, scan)
+            candidates.extend(entry_candidates)
+            if descend_dir is not None:
+                stack.append((descend_dir, depth + 1))
+    return candidates
 
 
-def _scan_expirable_tree(
-    *,
-    directory: Path,
-    project_entry: ProjectEntry,
-    watch_dir: Path,
-    config: SweepConfig,
-    now: datetime,
-    allow_directory_candidate: bool,
-    whole_dir_group: CandidateGroup,
-) -> _TreeScanState:
+def _scan_managed_entry(
+    entry: os.DirEntry[str],
+    depth: int,
+    scan: _ManagedDirScan,
+) -> tuple[tuple[CleanupCandidate, ...], Path | None]:
     """
-    后序扫描项目临时目录树。
-
-    采用后序遍历的原因是，SWEEP 必须先确认所有后代是否都过期，才能安全地用
-    一个 `whole_dir` 目录移动替换多个子候选。
-
-    Args:
-        directory: 当前正在检查的目录。
-        project_entry: 所属项目根和 Watch Dir 描述。
-        watch_dir: 授权扫描当前树的 Watch Dir。
-        config: 已校验的 SWEEP 配置。
-        now: 本轮扫描使用的当前时间。
-        allow_directory_candidate: 是否允许目录本身成为候选。
-        whole_dir_group: 当前根目录整体过期时使用的可见候选分组。
+    处理项目受控目录中的单个条目。
 
     Returns:
-        当前子树的候选、清理后是否仍有残留，以及整棵树是否过期。
+        第一项是当前条目直接产生的候选；第二项是需要继续下钻的普通目录。
     """
-    if not is_basic_safe_path(directory, config) or directory.is_symlink():
-        return _TreeScanState(candidates=(), remaining_after_cleanup=True, all_expired=False)
+    path = safe_entry_path(entry, scan.config)
+    if path is None:
+        return (), None
 
-    candidates: list[CleanupCandidate] = []
-    remaining_after_cleanup = False
-    all_children_expired = True
-    child_candidate_seen = False
+    candidate = _managed_temp_file_candidate(path, entry, scan)
+    if candidate is not None:
+        return (candidate,), None
 
-    try:
-        entries = list(os.scandir(directory))
-    except OSError:
-        return _TreeScanState(candidates=(), remaining_after_cleanup=True, all_expired=False)
-
-    for entry in entries:
-        path = Path(entry.path)
-        if not is_basic_safe_path(path, config) or entry.is_symlink():
-            remaining_after_cleanup = True
-            all_children_expired = False
-            continue
-        if entry.is_file(follow_symlinks=False):
-            if is_expired(path, config.projects.keep_days, now):
-                candidates.append(
-                    project_candidate(
-                        path=path,
-                        group=CandidateGroup.PARTIAL_ITEMS,
-                        kind=CandidateKind.FILE,
-                        reason="temp_tree_expired_file",
-                        watch_dir=watch_dir,
-                        project_entry=project_entry,
-                        config=config,
-                    )
-                )
-                child_candidate_seen = True
-            else:
-                remaining_after_cleanup = True
-                all_children_expired = False
-            continue
-        if not entry.is_dir(follow_symlinks=False):
-            remaining_after_cleanup = True
-            all_children_expired = False
-            continue
-        if entry.name in config.scan.skip_dirs:
-            remaining_after_cleanup = True
-            all_children_expired = False
-            continue
-
-        child_state = _scan_expirable_tree(
-            directory=path,
-            project_entry=project_entry,
-            watch_dir=watch_dir,
-            config=config,
-            now=now,
-            allow_directory_candidate=allow_directory_candidate,
-            whole_dir_group=CandidateGroup.PARTIAL_ITEMS,
-        )
-        candidates.extend(child_state.candidates)
-        child_candidate_seen = child_candidate_seen or bool(child_state.candidates)
-        remaining_after_cleanup = remaining_after_cleanup or child_state.remaining_after_cleanup
-        all_children_expired = all_children_expired and child_state.all_expired
-
-    directory_expired = is_expired(directory, config.projects.keep_days, now)
-    all_expired = directory_expired and all_children_expired
-    if allow_directory_candidate and all_expired:
-        return _TreeScanState(
-            candidates=(
-                project_candidate(
-                    path=directory,
-                    group=whole_dir_group,
-                    kind=CandidateKind.DIRECTORY,
-                    reason="expired_directory_tree",
-                    watch_dir=watch_dir,
-                    project_entry=project_entry,
-                    config=config,
-                ),
-            ),
-            remaining_after_cleanup=False,
-            all_expired=True,
-        )
-
-    if allow_directory_candidate and child_candidate_seen and not remaining_after_cleanup:
-        candidates.append(
-            project_candidate(
-                path=directory,
-                group=CandidateGroup.PARTIAL_ITEMS,
-                kind=CandidateKind.POST_CLEANUP_EMPTY_DIRECTORY,
-                reason="post_cleanup_empty_directory",
-                watch_dir=watch_dir,
-                project_entry=project_entry,
-                config=config,
+    if not _is_scannable_managed_dir(entry, scan.config):
+        return (), None
+    if entry.name in scan.config.projects.trash_bin_names:
+        return tuple(
+            scan_trash_bin_contents(
+                path,
+                scan.project_entry,
+                path,
+                scan.config,
+                scan.now,
             )
-        )
-        remaining_after_cleanup = False
-    else:
-        remaining_after_cleanup = True
+        ), None
+    if entry.name in scan.config.projects.temp_dirs:
+        return tuple(
+            scan_temp_tree(
+                path,
+                scan.project_entry,
+                path,
+                scan.config,
+                scan.now,
+                whole_dir_group=CandidateGroup.WHOLE_DIR,
+            )
+        ), None
+    if depth < scan.config.scan.max_depth:
+        return (), path
+    return (), None
 
-    return _TreeScanState(
-        candidates=tuple(candidates),
-        remaining_after_cleanup=remaining_after_cleanup,
-        all_expired=all_expired,
+
+def _managed_temp_file_candidate(
+    path: Path,
+    entry: os.DirEntry[str],
+    scan: _ManagedDirScan,
+) -> CleanupCandidate | None:
+    """创建受控目录内按名称识别出的过期临时文件候选。"""
+    if not entry_is_file(entry):
+        return None
+    if not is_temp_named_file(entry.name, scan.config):
+        return None
+    if not is_expired(path, scan.config.projects.keep_days, scan.now):
+        return None
+    return project_candidate(
+        path=path,
+        group=CandidateGroup.PARTIAL_ITEMS,
+        kind=CandidateKind.FILE,
+        reason="managed_temp_named_file",
+        watch_dir=scan.managed_dir,
+        project_entry=scan.project_entry,
+        config=scan.config,
     )
+
+
+def _is_scannable_managed_dir(entry: os.DirEntry[str], config: SweepConfig) -> bool:
+    """判断受控目录条目是否是可继续分类处理的子目录。"""
+    return entry_is_dir(entry) and entry.name not in config.scan.skip_dirs

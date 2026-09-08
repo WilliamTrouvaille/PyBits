@@ -138,6 +138,26 @@ def _fallback_trash_root(candidate: CleanupCandidate, config: SweepConfig) -> Pa
 
 def _repair_candidate(candidate: CleanupCandidate, config: SweepConfig) -> str:
     """尝试策略允许的、仅限当前用户拥有路径的有限权限修复。"""
+    block_reason = _repair_preflight_block_reason(candidate, config)
+    if block_reason is not None:
+        return block_reason
+
+    path_stat = _stat_for_repair(candidate.path)
+    if path_stat is None:
+        return "stat_failed"
+
+    ownership_reason = _ownership_repair_block_reason(candidate.path, path_stat)
+    if ownership_reason is not None:
+        return ownership_reason
+
+    return _apply_permission_repair(candidate.path, path_stat, config)
+
+
+def _repair_preflight_block_reason(
+    candidate: CleanupCandidate,
+    config: SweepConfig,
+) -> str | None:
+    """在读取 stat 前拒绝策略或安全边界不允许的候选。"""
     if not config.failure_policy.repair_owned_paths:
         return "repair_disabled"
     if candidate.path.is_symlink():
@@ -146,28 +166,43 @@ def _repair_candidate(candidate: CleanupCandidate, config: SweepConfig) -> str:
         return "missing"
     if not _is_in_scope(candidate.path, config):
         return "out_of_scope"
+    return None
 
+
+def _stat_for_repair(path: Path) -> os.stat_result | None:
+    """读取权限修复所需的 stat 信息。"""
     try:
-        path_stat = candidate.path.stat(follow_symlinks=False)
+        return path.stat(follow_symlinks=False)
     except OSError:
-        return "stat_failed"
+        return None
 
+
+def _ownership_repair_block_reason(path: Path, path_stat: os.stat_result) -> str | None:
+    """拒绝 root、其他用户或 ACL 语义不清的路径。"""
     current_uid = os.getuid()
     if path_stat.st_uid == 0:
         return "root_owned"
     if path_stat.st_uid != current_uid:
         return "other_user_owned"
-    if _has_unclear_acl(candidate.path):
+    if _has_unclear_acl(path):
         return "acl_unclear"
+    return None
 
+
+def _apply_permission_repair(
+    path: Path,
+    path_stat: os.stat_result,
+    config: SweepConfig,
+) -> str:
+    """执行有限 chmod 修复和可选 macOS 用户不可变标记清理。"""
     try:
         mode = stat.S_IMODE(path_stat.st_mode)
-        if candidate.path.is_dir():
-            candidate.path.chmod(mode | stat.S_IWUSR | stat.S_IXUSR)
+        if path.is_dir():
+            path.chmod(mode | stat.S_IWUSR | stat.S_IXUSR)
         else:
-            candidate.path.chmod(mode | stat.S_IWUSR)
+            path.chmod(mode | stat.S_IWUSR)
         if config.failure_policy.clear_macos_user_immutable_flag and platform.system() == "Darwin":
-            _clear_user_immutable_flag(candidate.path)
+            _clear_user_immutable_flag(path)
     except OSError:
         return "chmod_failed"
 

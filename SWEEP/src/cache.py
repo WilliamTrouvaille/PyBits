@@ -30,37 +30,20 @@ def load_project_entries(config: SweepConfig) -> tuple[list[ProjectEntry], Cache
         stats.reason = "missing"
         return [], stats
 
-    try:
-        payload = json.loads(cache_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        stats.reason = f"unreadable: {exc}"
+    payload, error_reason = _read_project_cache_payload(cache_file)
+    if payload is None:
+        stats.reason = error_reason
         stats.full_refresh = True
         return [], stats
 
-    if payload.get("version") != CACHE_VERSION:
-        stats.reason = "version_mismatch"
-        stats.full_refresh = True
-        return [], stats
-    if payload.get("config_hash") != config.config_hash:
-        stats.reason = "config_hash_mismatch"
-        stats.full_refresh = True
-        return [], stats
-    if _is_expired(payload.get("generated_at"), config.cache.ttl_hours):
-        stats.reason = "ttl_expired"
+    refresh_reason = _cache_payload_refresh_reason(payload, config)
+    if refresh_reason is not None:
+        stats.reason = refresh_reason
         stats.full_refresh = True
         return [], stats
 
-    entries: list[ProjectEntry] = []
-    for raw_entry in payload.get("projects", []):
-        entry = _parse_project_entry(raw_entry)
-        if entry is None:
-            stats.full_refresh = True
-            continue
-        if not _validate_project_entry(entry, config):
-            stats.full_refresh = True
-            continue
-        entries.append(entry)
-
+    entries, invalid_entry_seen = _load_valid_project_entries(payload, config)
+    stats.full_refresh = invalid_entry_seen
     stats.loaded = True
     stats.cache_hits = len(entries)
     if not entries:
@@ -95,6 +78,51 @@ def append_run_summary(config: SweepConfig, summary: dict[str, Any]) -> None:
     with config.cache.summary_file.open("a", encoding="utf-8") as file:
         file.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         file.write("\n")
+
+
+def _read_project_cache_payload(cache_file: Path) -> tuple[dict[str, Any] | None, str]:
+    """读取项目 Watch Dir 缓存 payload。"""
+    try:
+        payload = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, f"unreadable: {exc}"
+    if not isinstance(payload, dict):
+        return None, "invalid_payload"
+    return payload, ""
+
+
+def _cache_payload_refresh_reason(
+    payload: dict[str, Any],
+    config: SweepConfig,
+) -> str | None:
+    """判断缓存 payload 是否因版本、配置或 TTL 失效。"""
+    if payload.get("version") != CACHE_VERSION:
+        return "version_mismatch"
+    if payload.get("config_hash") != config.config_hash:
+        return "config_hash_mismatch"
+    if _is_expired(payload.get("generated_at"), config.cache.ttl_hours):
+        return "ttl_expired"
+    return None
+
+
+def _load_valid_project_entries(
+    payload: dict[str, Any],
+    config: SweepConfig,
+) -> tuple[list[ProjectEntry], bool]:
+    """解析并过滤缓存项目项，同时标记是否需要刷新缓存。"""
+    raw_projects = payload.get("projects", [])
+    if not isinstance(raw_projects, list):
+        return [], True
+
+    entries: list[ProjectEntry] = []
+    invalid_entry_seen = False
+    for raw_entry in raw_projects:
+        entry = _parse_project_entry(raw_entry)
+        if entry is None or not _validate_project_entry(entry, config):
+            invalid_entry_seen = True
+            continue
+        entries.append(entry)
+    return entries, invalid_entry_seen
 
 
 def _parse_project_entry(raw_entry: Any) -> ProjectEntry | None:

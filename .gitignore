@@ -17,6 +17,9 @@ ATP/.paper
 
 HELLO/logs/
 
+IMG/.env
+IMG/logs/
+
 PTM/.env
 
 PTP/logs/

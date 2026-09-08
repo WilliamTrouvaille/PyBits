@@ -10,6 +10,7 @@
 | `ATP` | 下载并转换 arXiv 论文 LaTeX 源码。 |
 | `CTA` | 从当前目录的 `CLAUDE.md` 生成 `AGENTS.md`。 |
 | `HELLO` | 探测 Claude Code 和 Codex CLI 连通性。 |
+| `IMG` | 通过 OpenAI Images API 兼容后端生成图片。 |
 | `PTM` | 通过 MinerU API 将 PDF 转换为 Markdown。 |
 | `PTP` | 使用 PyMuPDF 将 PDF 页面渲染为 PNG 图片。 |
 | `SWEEP` | 扫描并安全移动过期临时文件和项目临时目录。 |
@@ -27,6 +28,7 @@ uv tool install --force --reinstall --refresh .
 
 ```bash
 uv run HELLO --help
+uv run IMG --help
 uv run SKILLS --help
 uv run PTM --help
 uv run PTP --help

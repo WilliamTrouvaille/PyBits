@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 HELLO = "HELLO.cli:main"
+IMG = "IMG.cli:main"
 SKILLS = "SKILLS.cli:main"
 PTM = "PTM.cli:main"
 PTP = "PTP.cli:main"
@@ -39,6 +40,7 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = [
     "HELLO*",
+    "IMG*",
     "SKILLS*",
     "PTM*",
     "PTP*",
