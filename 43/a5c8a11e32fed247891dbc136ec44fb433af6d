@@ -1,0 +1,16 @@
+pyproject.toml
+  h_69509a28dfc720 30,50
+AGENTS.md
+  h_69509a28dfc720 16-19,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43a5c8a11e32fed247891dbc136ec44fb433af6d",
+  "prompts": {},
+  "humans": {
+    "h_69509a28dfc720": {
+      "author": "trouva_mac <70807372+WilliamTrouvaille@users.noreply.github.com>"
+    }
+  }
+}
